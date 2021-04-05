@@ -1,0 +1,2 @@
+./vasm6502_oldstyle -Fbin -dotdir hello-with-subs.asm
+ minipro -p AT28C256 -w a.out
