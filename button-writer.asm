@@ -9,25 +9,25 @@ PCR = $600c
 IFR = $600d
 IER = $600e
 
-
 E  = %10000000
 RW = %01000000
 RS = %00100000
 
 DISPLAY_CHAR = $09
+CHAR_POS = $0a
+BUTTONS_READ = $0b
 
   .org $8000      ; 1000000000000000
 
 reset:
   ldx #$ff
   txs
-  cli           ; enable interrupts
 
   ; setup 6522 --------------
   ; configire interrupts
   lda #$82 ; enable CA1
   sta IER
-  lda #0   ; set CA1 to low egde
+  lda #%00000001   ; set CA1 to high egde
   sta PCR
 
   lda #%11111111 ; Set all pins on port B to output, used by LCD
@@ -38,7 +38,7 @@ reset:
   ; setup LCD ---------------
   lda #%00111000 ; Set 8-bit mode; 2-line display; 5x8 font
   jsr lcd_instruction
-  lda #%00001110 ; Display on; cursor on; blink off
+  lda #%00001111 ; Display on; cursor on; blink off
   jsr lcd_instruction
   lda #%00000110 ; Increment and shift cursor; don't shift display
   jsr lcd_instruction
@@ -48,8 +48,18 @@ reset:
   lda #">"
   jsr print_char
 
+  ; lda #0
+  ; sta DISPLAY_CHAR
+
   lda #0
-  sta DISPLAY_CHAR
+  sta CHAR_POS
+
+  ; lda alphabet
+  ; jsr print_char
+
+  ; lda #%00010000  ; move cursor to the left
+  ; jsr lcd_instruction
+  cli           ; enable interrupts
 
 loop:
   lda #0
@@ -61,7 +71,12 @@ loop:
   lda #0
   sta DISPLAY_CHAR
 
+  ; lda #%00010000  ; move cursor to the left
+  ; jsr lcd_instruction
+
   jmp loop
+
+alphabet: .asciiz "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 lcd_wait:
   pha
@@ -107,37 +122,58 @@ print_char:
 
 nmi:
 irq:
-  ; store the registers to the stack
+; store the registers to the stack
   pha
   txa
   pha
   tya
   pha
 
+  lda PORTA
+  and #%00000111 ; only keep button info
+  sta BUTTONS_READ
+
+; delay to debounce the button
   ldx #$ff
-  ldy #$20
+  ldy #$80
 irq_delay:
   dex
   bne irq_delay
   dey
   bne irq_delay
 
-  lda #"!"
+  ; test for button 1: 00000001
+  and #%00000001 ; button 1
+  beq test_button_2
+  lda #"1"
   sta DISPLAY_CHAR
+  jmp done_reading
+test_button_2:
+  lda BUTTONS_READ
+  and #%00000010 ; button 2
+  beq test_button_3
+  lda #"2"
+  sta DISPLAY_CHAR
+  jmp done_reading
+test_button_3:
+  lda BUTTONS_READ
+  and #%00000100 ; button 3
+  beq done_reading
+  lda #"3"
+  sta DISPLAY_CHAR
+  jmp done_reading
 
-  bit PORTA       ; just reading PORTA so the 6522 knows we've handled the interrupt
+done_reading:
 
-  ; restore registers
+; restore registers
   pla
   tay
   pla
   tax
   pla
-  
   rti
 
-
-
+; setup the vectors (interrupt and reset)
   .org $fffa      ; 1111111111111010
   .word nmi       ; fffa, fffb
   .word reset     ; fffc, fffd
