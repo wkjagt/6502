@@ -7,11 +7,9 @@ E  = %10000000
 RW = %01000000
 RS = %00100000
 
-counter = $020a
   .org $8000
 
 reset:
-  ; setup LCD ---------------
   ldx #$ff
   txs
 
@@ -29,8 +27,6 @@ reset:
   lda #$00000001 ; Clear display
   jsr lcd_instruction
 
-  ; / setup LCD ---------------
-
   ldx #0
 print:
   lda message,x
@@ -42,7 +38,7 @@ print:
 loop:
   jmp loop
 
-// message: .asciiz "Hallo Bram!"
+message: .asciiz "Hello, world!"
 
 lcd_wait:
   pha
@@ -86,18 +82,6 @@ print_char:
   sta PORTA
   rts
 
-
-
-nmi:
-  rti
-irq:
-  inc counter
-  bne exit_irq
-  inc counter + 1
-exit_irq
-  rti
-
-  .org $fffa
-  .word nmi
+  .org $fffc
   .word reset
-  .word irq
+  .word $0000

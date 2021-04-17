@@ -1,11 +1,15 @@
-VIA_PORTB   = $6000                         ; Port B input / output register
-VIA_PORTA   = $6001                         ; Port A input / output register
-VIA_DDRB    = $6002                         ; Port B data direction_register
-VIA_DDRA    = $6003                         ; Port A data direction_register
-VIA_ACR     = $600b                         ; Auxilary Control Register
-VIA_PCR     = $600c                         ; Periphiral Control Register
-VIA_IFR     = $600d                         ; Interrupt Flag register
-VIA_IER     = $600e                         ; Interrupt enable register
+VIA_PORTB    = $6000                        ; Port B input / output register
+VIA_PORTA    = $6001                        ; Port A input / output register
+VIA_DDRB     = $6002                        ; Port B data direction_register
+VIA_DDRA     = $6003                        ; Port A data direction_register
+VIA_T1_CLK_L = $6004                        ; Clock 1 counter low byte
+VIA_T1_CLK_H = $6005                        ; Clock 1 counter high byte
+VIA_T1_LTC_L = $6006                        ; Clock 1 latch low byte
+VIA_T1_LTC_H = $6007                        ; Clock 1 latch high byte
+VIA_ACR      = $600b                        ; Auxilary Control Register
+VIA_PCR      = $600c                        ; Periphiral Control Register
+VIA_IFR      = $600d                        ; Interrupt Flag register
+VIA_IER      = $600e                        ; Interrupt enable register
 
 ; LCD display
 ; Read the busy flag when RS: 0 (instruction) and RW = 1 (write).  Busy flag is output to DB7
@@ -23,11 +27,11 @@ reset:            ldx #$ff
                   txs
 
                                             ; configure interrupts
-                  lda #$82                  ; enable CA1
+                  lda #%11000010            ; enable Timer 1 and CA1
                   sta VIA_IER
                   lda #%00000001            ; set CA1 to high egde
                   sta VIA_PCR
-                  lda #%00000001            ; enable latching on PA
+                  lda #%01000001            ; enable latching on PA and set clock 1 to continuous
                   sta VIA_ACR
 
                   lda #%11111111            ; Set all pins on port B to output, used by LCD
@@ -47,6 +51,11 @@ reset:            ldx #$ff
 
                   lda #0
                   sta CHAR_POS
+
+                  lda #$ff
+                  sta VIA_T1_CLK_L          ; store ff into counter low byte
+                  sta VIA_T1_CLK_H          ; store ff into counter high byte
+
                   cli                       ; enable interrupts
 
 loop:
@@ -118,26 +127,34 @@ print_char:       jsr lcd_wait
 
 nmi:              rti
 
-irq:              txa
+irq:              pha
+                  txa
                   pha
                   tya
                   pha
-                  
-                  ldx #$ff                  ; shitty delay to debounce the button
+
+                  lda VIA_IFR               ; interrupt register
+                  and #%01000000            ; this is set for the timer interrupt
+                  bne buttons_irq
+                  bit VIA_T1_CLK_L          ; clear the interrupt flags for the timer
+
+
+buttons_irq:      ldx #$ff                  ; shitty delay to debounce the button
                   ldy #$90
 irq_delay:        dex
                   bne irq_delay
                   dey
-                  bne irq_delay
+                  bne irq_delay                  
                   
                   lda VIA_PORTA             ; read the buttons from Port A
                   and #%00000111            ; only keep button info
                   sta BUTTONS_READ          ; restore registers
-                  
+                                    
                   pla
                   tay
                   pla
                   tax
+                  pha
                   rti
 
 vectors:          .org $fffa                ; 1111111111111010
