@@ -75,7 +75,7 @@ loop:               lda ACIA_STATUS
 
 ; this is limited to programs < 256 bytes. Make it fancier by using 16 bit addressing
 load_program:       ldy #0
-                    jsr next_serial_byte    ; load low byte of program length (5)
+                    jsr next_serial_byte
                     tax
 store_program_byte: jsr next_serial_byte
                     sta PROGRAM_START,y
@@ -84,17 +84,15 @@ store_program_byte: jsr next_serial_byte
                     bne store_program_byte
                     lda #"!"
                     jsr write_lcd
-
                     rts
-
 
 next_serial_byte:   lda ACIA_STATUS
                     and #ACIA_STATUS_RX_FULL
                     beq next_serial_byte
                     lda ACIA_DATA
                     rts
-write:
-                    jsr write_acia
+
+write:              jsr write_acia
                     jsr write_lcd
                     rts
 
