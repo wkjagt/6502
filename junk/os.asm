@@ -30,15 +30,15 @@ PROGRAM_WRITE_PTR      = $0002  ; pointer to address where the next byte is writ
 PROGRAM_START          = $0300
 
                     .org $8000
-
+    20
 reset: 
 setup:              
-setup_via:          lda #%11111111          ; Set all pins on port B to output
-                    sta DDRB
-                    lda #%11100001          ; Set top 3 pins on port A to output
-                    sta DDRA
-setup_lcd:          lda #%00111000          ; Set 8-bit mode; 2-line display; 5x8 font
-                    jsr send_lcd_command
+setup_via:          lda #%11111111          ; Set all pins on port B to output a9 ff
+                    sta DDRB                ; 8d 02 60
+                    lda #%11100001          ; Set top 3 pins on port A to output a9 e1
+                    sta DDRA                ; 8d  03 60
+setup_lcd:          lda #%00111000          ; Set 8-bit mode; 2-line display; 5x8 font  a9 38
+                    jsr send_lcd_command    20
                     lda #%00001110          ; Display on; cursor on; blink off
                     jsr send_lcd_command
                     lda #%00000110          ; Increment and shift cursor; don't shift display
