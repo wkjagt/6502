@@ -12,11 +12,6 @@ end
 
 ROM = 'blink.rom'
 
-require "serialport"
-require "pry"
-require 'progress_bar'
-require 'colorize'
-
 begin
   serial = SerialPort.new("/dev/tty.usbserial-A700fbj9", 19200, 8, 1, SerialPort::NONE)
 rescue Errno::ENOENT
