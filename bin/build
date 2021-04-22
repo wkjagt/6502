@@ -1,2 +1,0 @@
-./vasm/vasm6502_oldstyle -Fbin -dotdir bootloader.asm -o bootloader.rom
- minipro -p AT28C256 -w bootloader.rom
