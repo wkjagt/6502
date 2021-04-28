@@ -10,13 +10,13 @@ gemfile do
   gem "colorize"
 end
 
-ROM = 'blink.rom'
+ROM = ENV["ROM"]
 
 begin
   serial = SerialPort.new("/dev/tty.usbserial-A700fbj9", 19200, 8, 1, SerialPort::NONE)
 rescue Errno::ENOENT
   puts "\nSerial not plugged in\n\n"
-  exit
+  exit(1)
 end
 
 class ProgressBar

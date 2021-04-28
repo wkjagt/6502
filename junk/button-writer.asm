@@ -139,12 +139,14 @@ irq:              pha
                   bit VIA_T1_CLK_L          ; clear the interrupt flags for the timer
 
 
-buttons_irq:      ldx #$ff                  ; shitty delay to debounce the button
-                  ldy #$90
-irq_delay:        dex
-                  bne irq_delay
-                  dey
-                  bne irq_delay                  
+delay:
+    ldx #$ff
+    ldy #$ff
+more_delay:
+    dex
+    bne more_delay
+    dey
+    bne more_delay                  
                   
                   lda VIA_PORTA             ; read the buttons from Port A
                   and #%00000111            ; only keep button info
