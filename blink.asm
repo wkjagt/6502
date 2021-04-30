@@ -1,30 +1,14 @@
-; This is a program that loads into RAM over serial
-
-LED_STATUS = $00
+lcd_write = 0x80a3
+lcd_set_gdram_address = 0x809d
 
   .org $0300
 
-    lda #0
-    sta LED_STATUS
-
-loop:
-    ldx #$ff
-    ldy #$ff
-delay:
-    dex
-    bne delay
-    dey
-    bne delay     
-
-    lda LED_STATUS
-    beq led_on ; if the led is on, turn if off 
-led_off:
-    lda #0
-    sta LED_STATUS
-    sta $6001
-    jmp loop
-led_on:
+    lda #11
+    jsr lcd_set_gdram_address
     lda #1
-    sta LED_STATUS
-    sta $6001
-    jmp loop
+    jsr lcd_set_gdram_address
+    lda #0b00000001
+    jsr lcd_write
+    lda #0b11111111
+    jsr lcd_write
+    rts

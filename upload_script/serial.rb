@@ -30,17 +30,18 @@ puts ("Uploading " + ROM.colorize(:light_blue).bold + " to 6502 computer").under
 puts
 
 file = File.open(ROM) do |file|
-  bytes = file.read.bytes
-  size_bytes = [bytes.size].pack('S').unpack('CC')
-  payload = [size_bytes.first] + bytes
+  payload = file.read.bytes
+  # size_bytes = [bytes.size].pack('S').unpack('CC')
+  # payload = bytes
 
   bar = ProgressBar.new(payload.size)
 
   serial.putc("l")
 
   payload.each do |byte|
-    sleep(0.05)
+    sleep(0.01)
     serial.putc(byte)
     bar.increment!
   end
+  serial.putc(0x00)
 end

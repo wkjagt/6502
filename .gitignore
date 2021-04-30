@@ -1,4 +1,5 @@
 vendor
 *.rom
 *.o
+*.lst
 .DS_Store
