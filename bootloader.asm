@@ -50,21 +50,65 @@ loop:               lda ACIA_STATUS
                     jsr write          ; echo
                     cmp #"l"
                     bne loop
-
                     jsr load_program
-                    
                     jmp PROGRAM_START
                     jmp loop
 
-load_program:       jsr next_serial_byte ; loads the next byte into A
+
+; phase 1: read 128 bytes and return
+; phase 2: send EOT character and use to end loading
+; phase 3: send SOH character and use to start loading
+; phase 4: send packet numbers and start verifying
+
+load_program:       ldy #0x80             ; packet size: 128 
+_next_program_byte: jsr next_serial_byte  ; read byte
+                    sta (PROGRAM_WRITE_PTR_L)
+                    dey
                     beq _done
                     clc
-                    sta (PROGRAM_WRITE_PTR_L)
                     inc PROGRAM_WRITE_PTR_L
-                    bcc load_program
+                    bcc _next_program_byte
                     inc PROGRAM_WRITE_PTR_H
-                    jmp load_program
-_done               rts
+                    jmp _next_program_byte
+_done:              rts
+
+
+
+;                     cmp 0x04              ; if EOT: end transmission, done
+;                     beq _done
+;                     cmp 0x01              ; if SOH: load packet
+;                     beq load_packet
+;                     lda #1                ; unexpected header byte, error: 1
+;                     jsr error
+;                     rts
+; load_packet:        ldy #0                ; 
+                    ;
+                    ; read block number (header byte 2)
+                    ; compare to expected block number
+                    ; error if incorrect
+                    ; 
+                    ; 
+; load_program_byte:  ; read 128 bytes and store in memory:
+                    ; read next byte
+                    ; add to checksum byte, ignoring carry
+                    
+                    ; after 128 bytes:
+                    ; read checksum byte
+                    ; compare to local checksum in memory
+; _done:              rts
+                    
+error:
+  rts
+
+; load_program:       jsr next_serial_byte ; loads the next byte into A
+;                     beq _done
+;                     clc
+;                     sta (PROGRAM_WRITE_PTR_L)
+;                     inc PROGRAM_WRITE_PTR_L
+;                     bcc load_program
+;                     inc PROGRAM_WRITE_PTR_H
+;                     jmp load_program
+; _done               rts
 
 next_serial_byte:   lda ACIA_STATUS
                     and #ACIA_STATUS_RX_FULL
