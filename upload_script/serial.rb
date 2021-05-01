@@ -38,10 +38,14 @@ File.open(ROM) do |file|
   end
 
   bar = ProgressBar.new(packet_bytes.size)
+  serial.putc("\x01")
 
   packet_bytes.each do |byte|
     sleep(0.01)
     serial.putc(byte)
     bar.increment!
   end
+  sleep(0.01)
+
+  serial.putc("\x04")
 end

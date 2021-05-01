@@ -3,14 +3,11 @@ lcd_set_gdram_address = 0x809d
 
     .org $0300
 
-    lda #16
+    lda #$0
     jsr lcd_set_gdram_address
-    lda #$1
+    lda #$0
     jsr lcd_set_gdram_address
-    lda #0b11111111
+    lda #$55
     jsr lcd_write
-    lda #0b11111111
+    lda #$55
     jsr lcd_write
-    rts
-
-
