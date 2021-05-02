@@ -10,42 +10,80 @@ gemfile do
   gem "colorize"
 end
 
-ROM = ENV["ROM"]
-
-begin
-  serial = SerialPort.new("/dev/tty.usbserial-A700fbj9", 19200, 8, 1, SerialPort::NONE)
-rescue Errno::ENOENT
-  puts "\nSerial not plugged in\n\n"
-  exit(1)
-end
-
 class ProgressBar
   def render_rate
     "[%#{max_width + 3}.2fB/s]" % rate
   end
 end
 
-puts 
-puts ("Uploading " + ROM.colorize(:light_blue).bold + " to 6502 computer").underline
-puts
+class Uploader
+  NOP = "\xea"
+  SOH = "\x01"
+  EOT = "\x04"
+  WRITE_PAUSE = 0.0005
+  PACKET_SIZE = 128
 
-serial.putc("l")
-
-File.open(ROM) do |file|
-  packet_bytes = file.read.bytes
-  if packet_bytes.size < 128
-    packet_bytes += [0] * (128 - packet_bytes.size)
+  def initialize(serial:, path:)
+    @path = path
+    @packets = load_packets(path)
+    @serial_port = open_serial_port(serial)
+    @progress_bar = ProgressBar.new(calculate_size)
   end
 
-  bar = ProgressBar.new(packet_bytes.size)
-  serial.putc("\x01")
+  def upload
+    puts ("Uploading " + @path.colorize(:light_blue).bold + " to 6502 computer").underline
+    
+    write_byte("l")
 
-  packet_bytes.each do |byte|
-    sleep(0.01)
-    serial.putc(byte)
-    bar.increment!
+    @packets.each { |packet| upload_packet(packet) }
+    write_byte(EOT)
   end
-  sleep(0.01)
 
-  serial.putc("\x04")
+  private
+
+  def upload_packet(packet)
+    write_byte(SOH)
+
+    packet.each { |byte| write_byte(byte) }
+  end
+
+  def write_byte(byte)
+    sleep(WRITE_PAUSE)
+    @serial_port.putc(byte)
+    @progress_bar.increment!
+  end
+
+  def load_packets(path)
+    program_bytes(path).each_slice(PACKET_SIZE).map do |unpadded|
+      pad(unpadded)
+    end
+  end
+
+  def pad(packet)
+    return packet if packet.size == PACKET_SIZE
+    packet + [NOP] * (128 - packet.size)
+  end
+
+  def program_bytes(path)
+    File.open(path) { |file| file.read.bytes }
+  rescue
+    raise "ROM not found: #{@path}"
+  end
+
+  def open_serial_port(serial)
+    SerialPort.new(serial, 19200, 8, 1, SerialPort::NONE)
+  rescue Errno::ENOENT
+    raise "Serial device not found"
+  end
+
+  def calculate_size
+    @packets.size * 129 + 1
+  end
+end
+
+begin
+  uploader = Uploader.new(serial: "/dev/tty.usbserial-A700fbj9", path: ENV["ROM"])
+  uploader.upload
+rescue => error
+  puts "\n#{error.to_s}\n".colorize(:red).bold
 end
