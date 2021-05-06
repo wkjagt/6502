@@ -5,5 +5,5 @@ upload_rom:
 	minipro -p AT28C256 -w bootloader.rom
 
 load:
-	./vasm/vasm6502_oldstyle -Fbin -dotdir $(program).asm -o $(program).rom
+	./vasm/vasm6502_oldstyle -Fbin -dotdir -c02 $(program).asm -o $(program).rom
 	ROM=$(program).rom ruby upload_script/serial.rb

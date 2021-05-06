@@ -20,24 +20,22 @@ PROGRAM_WRITE_PTR_H    = $0003
 PROGRAM_START          = $0300
 
   .org $8000
-  .include lcd.asm
 
 reset: 
 setup:              
-setup_acia:         lda #%11001011          ; No parity, no echo, no interrupt
+setup_via:          lda #%11111111
+                    sta DDRA
+                    sta DDRB
+setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
-                    lda #%00011111          ; 1 stop bit, 8 data bits, 19200 baud
+                    lda #%00011111               ; 1 stop bit, 8 data bits, 19200 baud
                     sta ACIA_CONTROL
-setup_program_ptrs: lda #0                   ; reset counters that count prgram length
+setup_program_ptrs: lda #0                       ; reset counters that count prgram length
                     sta PROGRAM_WRITE_PTR_L
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
-                    jsr lcd_init
 
-loop:               lda ACIA_STATUS
-                    and #ACIA_STATUS_RX_FULL
-                    beq loop
-                    lda ACIA_DATA
+loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
                     jsr load_program
@@ -45,15 +43,15 @@ loop:               lda ACIA_STATUS
                     jmp loop
 
 load_program:       
-.header_byte:       jsr read_serial_byte       ; read byte
-                    cmp #$04                   ; EOT
+.header_byte:       jsr read_serial_byte         ; read byte
+                    cmp #$04                     ; EOT
                     beq .done
-                    ldy #0x80                  ; packet size: 128 
+                    ldy #0x80                    ; packet size: 128 
 .program_byte:      jsr read_serial_byte
                     sta (PROGRAM_WRITE_PTR_L)
                     jsr inc_prgrm_pointer
                     dey
-                    beq .header_byte           ; when y == 0, end of packet
+                    beq .header_byte             ; when y == 0, end of packet
                     jmp .program_byte
 .done:              tya
                     rts

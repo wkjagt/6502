@@ -1,13 +1,40 @@
-lcd_write = 0x80a3
-lcd_set_gdram_address = 0x809d
+LED_STATUS = $00
 
-    .org $0300
+VIA_START = $6000
+PORTA = VIA_START + 1
+PORTB = VIA_START + 0
+DDRA  = VIA_START + 3
+DDRB  = VIA_START + 2
 
-    lda #$0
-    jsr lcd_set_gdram_address
-    lda #$0
-    jsr lcd_set_gdram_address
-    lda #$55
-    jsr lcd_write
-    lda #$55
-    jsr lcd_write
+  .org $0300
+
+    lda #$ff
+    sta PORTA
+    sta PORTB
+
+loop:
+    jmp loop:
+;     lda #0
+;     sta LED_STATUS
+
+; loop:
+;     ldx #$ff
+;     ldy #$ff
+; delay:
+;     dex
+;     bne delay
+;     dey
+;     bne delay     
+
+;     lda LED_STATUS
+;     beq led_on ; if the led is on, turn if off 
+; led_off:
+;     lda #0
+;     sta LED_STATUS
+;     sta PORTA
+;     jmp loop
+; led_on:
+;     lda #1
+;     sta LED_STATUS
+;     sta PORTA
+;     jmp loop
