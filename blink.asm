@@ -8,33 +8,27 @@ DDRB  = VIA_START + 2
 
   .org $0300
 
-    lda #$ff
-    sta PORTA
-    sta PORTB
+    lda #0
+    sta LED_STATUS
 
 loop:
-    jmp loop:
-;     lda #0
-;     sta LED_STATUS
+    ldx #$ff
+    ldy #$ff
+delay:
+    dex
+    bne delay
+    dey
+    bne delay     
 
-; loop:
-;     ldx #$ff
-;     ldy #$ff
-; delay:
-;     dex
-;     bne delay
-;     dey
-;     bne delay     
-
-;     lda LED_STATUS
-;     beq led_on ; if the led is on, turn if off 
-; led_off:
-;     lda #0
-;     sta LED_STATUS
-;     sta PORTA
-;     jmp loop
-; led_on:
-;     lda #1
-;     sta LED_STATUS
-;     sta PORTA
-;     jmp loop
+    lda LED_STATUS
+    beq led_on ; if the led is on, turn if off 
+led_off:
+    lda #0
+    sta LED_STATUS
+    sta PORTA
+    jmp loop
+led_on:
+    lda #$ff
+    sta LED_STATUS
+    sta PORTA
+    jmp loop
