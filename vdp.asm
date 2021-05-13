@@ -1,0 +1,8 @@
+
+vdp_write_register: .macro register, data
+  lda #\data
+  sta VDP_REG
+
+  lda #\register        ; register select
+  sta VDP_REG     ; register 7
+.endm

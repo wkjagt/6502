@@ -12,6 +12,8 @@ ACIA_STATUS  = ACIA_START + 1
 ACIA_COMMAND = ACIA_START + 2
 ACIA_CONTROL = ACIA_START + 3
 
+VDP_VRAM     = $8000
+VDP_REG      = $8001
 
 ACIA_STATUS_RX_FULL    = 1 << 3
 
@@ -19,13 +21,15 @@ PROGRAM_WRITE_PTR_L    = $0002
 PROGRAM_WRITE_PTR_H    = $0003
 PROGRAM_START          = $0300
 
-  .org $8000
+  .org $c000
 
 reset: 
 setup:              
 setup_via:          lda #%11111111
                     sta DDRA
                     sta DDRB
+                    sta PORTA
+                    sta PORTB
 setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
                     lda #%00011111               ; 1 stop bit, 8 data bits, 19200 baud
@@ -34,6 +38,12 @@ setup_program_ptrs: lda #0                       ; reset counters that count prg
                     sta PROGRAM_WRITE_PTR_L
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
+
+                    ; lda #$0B
+                    ; sta VDP_REG
+
+                    ; lda #$87
+                    ; sta VDP_REG
 
 loop:               jsr read_serial_byte
                     cmp #"l"
