@@ -17,10 +17,10 @@ class ProgressBar
 end
 
 class Uploader
-  NOP = "\xea"
-  SOH = "\x01"
-  EOT = "\x04"
-  WRITE_PAUSE = 0.0005
+  NOP = 0xea              # no-op instruction byte to fill left over space with
+  SOH = 0x01              # start of header
+  EOT = 0x04              # end of transmission
+  WRITE_PAUSE = 0.0005    # pause between each byte
   PACKET_SIZE = 128
 
   def initialize(serial:, path:)

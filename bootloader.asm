@@ -28,8 +28,10 @@ setup:
 setup_via:          lda #%11111111
                     sta DDRA
                     sta DDRB
+                    lda #$00
                     sta PORTA
                     sta PORTB
+
 setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
                     lda #%00011111               ; 1 stop bit, 8 data bits, 19200 baud
@@ -39,16 +41,16 @@ setup_program_ptrs: lda #0                       ; reset counters that count prg
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
 
-                    ; lda #$0B
-                    ; sta VDP_REG
-
-                    ; lda #$87
-                    ; sta VDP_REG
-
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
+                    
+                    lda #$ff                     ; load light on
+                    sta PORTB
                     jsr load_program
+                    lda #$00                     ; load light off
+                    sta PORTB
+
                     jsr PROGRAM_START
                     jmp loop
 
@@ -56,19 +58,17 @@ load_program:
 .header_byte:       jsr read_serial_byte         ; read byte
                     cmp #$04                     ; EOT
                     beq .done
-                    ldy #0x80                    ; packet size: 128 
+                    ldy #$80                     ; packet size: 128 
 .program_byte:      jsr read_serial_byte
                     sta (PROGRAM_WRITE_PTR_L)
                     jsr inc_prgrm_pointer
                     dey
                     beq .header_byte             ; when y == 0, end of packet
                     jmp .program_byte
-.done:              tya
-                    rts
+.done:              rts
 
-inc_prgrm_pointer:  clc
-                    inc PROGRAM_WRITE_PTR_L
-                    bcc .done
+inc_prgrm_pointer:  inc PROGRAM_WRITE_PTR_L
+                    bne .done
                     inc PROGRAM_WRITE_PTR_H
 .done:              rts
 
