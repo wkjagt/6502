@@ -1,16 +1,13 @@
-VIA_START = $6000
-PORTA = VIA_START + 1
-PORTB = VIA_START + 0
-DDRA  = VIA_START + 3
-DDRB  = VIA_START + 2
-
 ; TMS9918A
-VDP_VRAM = $8000
-VDP_REG  = $8001
-VDP_WRITE_VRAM_BIT = $40
-VDP_REGISTER_BITS = $80
+VDP_VRAM               = $8000
+VDP_REG                = $8001
+VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
+VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
+
 VDP_NAME_TABLE_BASE    = $0000
 VDP_PATTERN_TABLE_BASE = $0800
+
+
 
 ; zero page addresses
 VDP_PATTERN_INIT = $30
@@ -21,7 +18,7 @@ VDP_PATTERN_INIT_HI = $31
   .macro vdp_write_vram
   lda #<(\1)
   sta VDP_REG
-  lda #(VDP_WRITE_VRAM_BIT | >\1)
+  lda #(VDP_WRITE_VRAM_BIT | >\1) ; see second register write pattern
   sta VDP_REG
   .endm
 
@@ -31,10 +28,6 @@ vdp_reset:
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_name_table
   jsr vdp_enable_display
-
-  lda #$ff
-  sta PORTB
-
   rts
 
 vdp_reg_reset:
@@ -43,58 +36,56 @@ vdp_reg_reset:
 
   ldx #0
 vdp_reg_reset_loop:
-  ; write value
   lda vdp_register_inits,x
   sta VDP_REG
-  ; write reg #
   txa
-  ora #VDP_REGISTER_BITS
+  ora #VDP_REGISTER_BITS ; combine the register number with the second write pattern
   sta VDP_REG
   inx
-  cpx #(vdp_end_register_inits - vdp_register_inits)
+  cpx #(vdp_end_register_inits - vdp_register_inits) ; compute number of registers
   bne vdp_reg_reset_loop
   plx
   pla
   rts
 
 vdp_initialize_pattern_table:
-  ; initialize the pattern table to the 16 hex digits
   pha
   phx
-  vdp_write_vram VDP_PATTERN_TABLE_BASE
-  lda #<vdp_patterns
+  vdp_write_vram VDP_PATTERN_TABLE_BASE   ; write the vram pattern table address to the 9918
+  lda #<vdp_patterns                      ; load the start address of the patterns to zero page
   sta VDP_PATTERN_INIT
   lda #>vdp_patterns
   sta VDP_PATTERN_INIT_HI
 vdp_pattern_table_loop:
-  lda (VDP_PATTERN_INIT)
-  sta VDP_VRAM
+  lda (VDP_PATTERN_INIT)                  ; load A with the value at VDP_PATTERN_INIT 
+  sta VDP_VRAM                            ; and store it to VRAM
 
-  lda VDP_PATTERN_INIT
-  clc
-  adc #1
-  sta VDP_PATTERN_INIT
-  lda #0
-  adc VDP_PATTERN_INIT_HI
-  sta VDP_PATTERN_INIT_HI
-  cmp #>vdp_end_patterns
-  bne vdp_pattern_table_loop
-  lda VDP_PATTERN_INIT
+  lda VDP_PATTERN_INIT                    ; load the low byte of VDP_PATTERN_INIT address into A
+  clc                                     ; clear carry flag
+  adc #1                                  ; Add 1, with carry
+  sta VDP_PATTERN_INIT                    ; store back into VDP_PATTERN_INIT
+  lda #0                                  ; load A with 0
+  adc VDP_PATTERN_INIT_HI                 ; add with the carry flag to the high address
+  sta VDP_PATTERN_INIT_HI                 ; and store that back into the high byte
+  cmp #>vdp_end_patterns                  ; compare if we're at the end of the patterns
+  bne vdp_pattern_table_loop              ; if not, loop again
+  lda VDP_PATTERN_INIT                    ; compare the low byte
   cmp #<vdp_end_patterns
-  bne vdp_pattern_table_loop
+  bne vdp_pattern_table_loop              ; if not equal, loop again
 
   plx
   pla
   rts
 
 vdp_initialize_name_table:
+  ; store increasing values into name table to fill the screen with 256 values
   pha
-  vdp_write_vram VDP_NAME_TABLE_BASE
-  lda #0
+  vdp_write_vram VDP_NAME_TABLE_BASE      ; set the vram write address to the nametable base
+  lda #0                                  ; Load 0 into A
 vdp_name_table_loop:
-  sta VDP_VRAM
-  inc
-  bne vdp_name_table_loop ; will be true after $FF
+  sta VDP_VRAM                            ; store A into name table
+  inc                                     ; increment A
+  bne vdp_name_table_loop                 ; will be true after $FF
   pla
   rts
 
@@ -110,7 +101,7 @@ vdp_enable_display:
 
 vdp_register_inits:
 vdp_register_0: .byte %00000000 ; 0  0  0  0  0  0  M3 EXTVDP
-vdp_register_1: .byte %10010000 ;16k Bl IE M1 M2 0 Siz MAG
+vdp_register_1: .byte %10010000 ; 16k Bl IE M1 M2 0 Siz MAG
 vdp_register_2: .byte $00       ; Name table base / $400. $00 = $0000
 vdp_register_3: .byte $00       ; Color table base (currently unused)
 vdp_register_4: .byte $01       ; Pattern table base / $800. $01 = $0800
