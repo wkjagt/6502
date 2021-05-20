@@ -4,17 +4,25 @@ VDP_REG                = $8001
 VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
 VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
 
-VDP_NAME_TABLE_BASE            = $0000
+VDP_NAME_TABLE_BASE            = $0400
 VDP_PATTERN_TABLE_BASE         = $0800
-VDP_COLOR_TABLE_BASE           = $0400
-VDP_SPRITE_PATTERNS_TABLE_BASE = $2000
-VDP_SPRITE_ATTR_TABLE_BASE     = $3000
+VDP_COLOR_TABLE_BASE           = $0200
+VDP_SPRITE_PATTERNS_TABLE_BASE = $0000
+VDP_SPRITE_ATTR_TABLE_BASE     = $0100
 
 ; zero page addresses
 VDP_PATTERN_INIT    = $30
 VDP_PATTERN_INIT_HI = $31
 VDP_SPRITE_INIT     = $32
 VDP_SPRITE_INIT_HI  = $33
+
+
+BALL_HOR_DIRECTION  = $34
+BALL_VER_DIRECTION  = $35
+BALL_X              = $36
+BALL_Y              = $37
+
+
 
   .org $0300
 
@@ -27,15 +35,28 @@ VDP_SPRITE_INIT_HI  = $33
 
 
 vdp_reset:
+  lda #0
+  sta BALL_HOR_DIRECTION ; 0: left, 1: right
+  sta BALL_VER_DIRECTION ; 0: down, 2: up
+  lda #$10
+  sta BALL_X
+  sta BALL_Y
+
   jsr vdp_reg_reset
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
   jsr vdp_clear_display
   jsr write_message
   jsr initialize_sprite
-  jsr draw_sprite
+  jsr init_ball
   jsr vdp_enable_display
-  rts
+
+main_loop:
+  jsr update_ball
+  jsr draw_ball
+  jsr delay
+  jmp main_loop
+
 
 vdp_reg_reset:
   pha
@@ -124,7 +145,7 @@ vdp_name_table_loop:
 vdp_initialize_color_table:
   vdp_write_vram VDP_COLOR_TABLE_BASE
   ldx #$20
-  lda #$1f   ; dark blue / white
+  lda #$1a   ; dark blue / white
 vdp_color_table_loop:
   sta VDP_VRAM
   dex
@@ -155,14 +176,93 @@ initialize_sprite:
   bne .loop                              ; if not equal, loop again
   rts
 
-draw_sprite:
-  vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
-  lda #$10
+init_ball:
+  lda BALL_Y
   sta VDP_VRAM
+  lda BALL_X
   sta VDP_VRAM
   lda #0
+  sta VDP_VRAM  ; name
+  lda #$0d
+  sta VDP_VRAM  ; colour (0001 = black)
+  lda #$d0
+  sta VDP_VRAM  ; ignore all other sprites
+  rts
+
+update_ball:
+  jsr set_ball_hor_direction
+  jsr set_ball_ver_direction
+  jsr set_ball_pos
+  rts
+
+draw_ball:
+  vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
+  lda BALL_Y
   sta VDP_VRAM
-  lda #%00000001
+  lda BALL_X
+  sta VDP_VRAM
+  rts
+
+set_ball_hor_direction:
+verify_left_border:
+  lda BALL_X
+  cmp #$4
+  bne verify_right_border ; not currently 0
+  lda #$1
+  sta BALL_HOR_DIRECTION
+  rts
+verify_right_border:
+  cmp #$f9
+  bne .done
+  lda #$0
+  sta BALL_HOR_DIRECTION
+.done:
+  rts
+
+set_ball_ver_direction:
+verify_top_border:
+  lda BALL_Y
+  bne verify_bottom_border
+  lda #$1
+  sta BALL_VER_DIRECTION
+  rts
+verify_bottom_border:
+  cmp #$B7
+  bne .done
+  lda #0
+  sta BALL_VER_DIRECTION
+.done
+  rts
+
+set_ball_pos:
+set_ball_pos_x:
+  lda BALL_HOR_DIRECTION
+  bne incr_ball_x
+  dec BALL_X
+  jmp set_ball_pos_y
+incr_ball_x:
+  inc BALL_X
+set_ball_pos_y:
+  lda BALL_VER_DIRECTION
+  bne incr_ball_y
+  dec BALL_Y
+  rts
+incr_ball_y:
+  inc BALL_Y
+  rts
+
+delay:
+  phx
+  phy
+  ldx #$ff
+  ldy #$05
+delay_loop:
+  dex
+  bne delay_loop
+  dey
+  bne delay_loop
+  ply
+  plx
   rts
 
 vdp_enable_display:
@@ -173,21 +273,22 @@ vdp_enable_display:
   lda #(VDP_REGISTER_BITS | 1)
   sta VDP_REG
   pla
+  sta VDP_VRAM
   rts
 
 vdp_register_inits:
 vdp_register_0: .byte %00000000 ; 0  0  0  0  0  0  M3 EXTVDP
 vdp_register_1: .byte %10000000 ; 16k Bl IE M1 M2 0 Siz MAG
-vdp_register_2: .byte $00       ; Name table base / $400 * $00 = $0000
-vdp_register_3: .byte $10       ; Color table base / $40 * $10 = $0400
+vdp_register_2: .byte $01       ; Name table base / $400 * $00 = $0000
+vdp_register_3: .byte $08       ; Color table base / $40 * $10 = $0400
 vdp_register_4: .byte $01       ; Pattern table base / $800 * $01 = $0800
-vdp_register_5: .byte $60       ; Sprite attribute table base / $80 * $60 = $3000
-vdp_register_6: .byte $04       ; Sprite pattern generator base / $800 * $04 = $2000
-vdp_register_7: .byte $1f       ; FG/BG. 1=>Black, E=>Gray
+vdp_register_5: .byte $02       ; Sprite attribute table base / $80 * $60 = $3000
+vdp_register_6: .byte $00       ; Sprite pattern generator base / $800 * $04 = $2000
+vdp_register_7: .byte $77       ; FG/BG. 1=>Black, E=>Gray
 vdp_end_register_inits:
 
 message:
-  .asciiz " Willem z'n 6502 computer"
+  .asciiz " The ball is a little buggy"
 
   ; .align 8
 vdp_patterns:
@@ -326,36 +427,36 @@ vdp_end_patterns:
 
 
 vdp_sprite_patterns:
-  .byte $70,$88,$A8,$B8,$B0,$80,$78,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
-  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $3c,$42,$f1,$f9,$fd,$fd,$7e,$3c    ; ball 
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
 vdp_end_sprite_patterns:
