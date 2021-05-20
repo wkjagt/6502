@@ -4,14 +4,17 @@ VDP_REG                = $8001
 VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
 VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
 
-VDP_NAME_TABLE_BASE    = $0000
-VDP_PATTERN_TABLE_BASE = $0800
-
-
+VDP_NAME_TABLE_BASE            = $0000
+VDP_PATTERN_TABLE_BASE         = $0800
+VDP_COLOR_TABLE_BASE           = $0400
+VDP_SPRITE_PATTERNS_TABLE_BASE = $2000
+VDP_SPRITE_ATTR_TABLE_BASE     = $3000
 
 ; zero page addresses
-VDP_PATTERN_INIT = $30
+VDP_PATTERN_INIT    = $30
 VDP_PATTERN_INIT_HI = $31
+VDP_SPRITE_INIT     = $32
+VDP_SPRITE_INIT_HI  = $33
 
   .org $0300
 
@@ -26,7 +29,11 @@ VDP_PATTERN_INIT_HI = $31
 vdp_reset:
   jsr vdp_reg_reset
   jsr vdp_initialize_pattern_table
-  jsr vdp_initialize_name_table
+  jsr vdp_initialize_color_table
+  jsr vdp_clear_display
+  jsr write_message
+  jsr initialize_sprite
+  jsr draw_sprite
   jsr vdp_enable_display
   rts
 
@@ -77,6 +84,31 @@ vdp_pattern_table_loop:
   pla
   rts
 
+vdp_clear_display:
+  vdp_write_vram VDP_NAME_TABLE_BASE
+  lda #" "
+  ldx #$3
+  ldy #0
+vdp_clear_display_loop:
+  sta VDP_VRAM
+  iny
+  bne vdp_clear_display_loop
+  dex
+  bne vdp_clear_display_loop
+  rts
+
+write_message:
+  vdp_write_vram VDP_NAME_TABLE_BASE
+  ldx #0
+write_message_loop:
+  lda message,x
+  beq .done
+  sta VDP_VRAM
+  inx
+  jmp write_message_loop
+.done:
+  rts
+
 vdp_initialize_name_table:
   ; store increasing values into name table to fill the screen with 256 values
   pha
@@ -87,6 +119,50 @@ vdp_name_table_loop:
   inc                                     ; increment A
   bne vdp_name_table_loop                 ; will be true after $FF
   pla
+  rts
+
+vdp_initialize_color_table:
+  vdp_write_vram VDP_COLOR_TABLE_BASE
+  ldx #$20
+  lda #$1f   ; dark blue / white
+vdp_color_table_loop:
+  sta VDP_VRAM
+  dex
+  bne vdp_color_table_loop
+  rts
+
+
+initialize_sprite:
+  vdp_write_vram VDP_SPRITE_PATTERNS_TABLE_BASE
+  lda #<vdp_sprite_patterns
+  sta VDP_SPRITE_INIT
+  lda #>vdp_sprite_patterns
+  sta VDP_SPRITE_INIT_HI
+.loop:
+  lda (VDP_SPRITE_INIT)                  ; load A with the value at VDP_PATTERN_INIT 
+  sta VDP_VRAM                           ; and store it to VRAM
+  lda VDP_SPRITE_INIT                    ; load the low byte of VDP_SPRITE_INIT address into A
+  clc                                    ; clear carry flag
+  adc #1                                 ; Add 1, with carry
+  sta VDP_SPRITE_INIT                    ; store back into VDP_SPRITE_INIT
+  lda #0                                 ; load A with 0
+  adc VDP_SPRITE_INIT_HI                 ; add with the carry flag to the high address
+  sta VDP_SPRITE_INIT_HI                 ; and store that back into the high byte
+  cmp #>vdp_end_sprite_patterns          ; compare if we're at the end of the patterns
+  bne .loop                              ; if not, loop again
+  lda VDP_SPRITE_INIT                    ; compare the low byte
+  cmp #<vdp_end_sprite_patterns
+  bne .loop                              ; if not equal, loop again
+  rts
+
+draw_sprite:
+  vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
+  lda #$10
+  sta VDP_VRAM
+  sta VDP_VRAM
+  lda #0
+  sta VDP_VRAM
+  lda #%00000001
   rts
 
 vdp_enable_display:
@@ -101,14 +177,17 @@ vdp_enable_display:
 
 vdp_register_inits:
 vdp_register_0: .byte %00000000 ; 0  0  0  0  0  0  M3 EXTVDP
-vdp_register_1: .byte %10010000 ; 16k Bl IE M1 M2 0 Siz MAG
-vdp_register_2: .byte $00       ; Name table base / $400. $00 = $0000
-vdp_register_3: .byte $00       ; Color table base (currently unused)
-vdp_register_4: .byte $01       ; Pattern table base / $800. $01 = $0800
-vdp_register_5: .byte $00       ; Sprite attribute table base (currently unused)
-vdp_register_6: .byte $00       ; Sprite pattern generator (currently unused)
-vdp_register_7: .byte $1E       ; FG/BG. 1=>Black, E=>Gray
+vdp_register_1: .byte %10000000 ; 16k Bl IE M1 M2 0 Siz MAG
+vdp_register_2: .byte $00       ; Name table base / $400 * $00 = $0000
+vdp_register_3: .byte $10       ; Color table base / $40 * $10 = $0400
+vdp_register_4: .byte $01       ; Pattern table base / $800 * $01 = $0800
+vdp_register_5: .byte $60       ; Sprite attribute table base / $80 * $60 = $3000
+vdp_register_6: .byte $04       ; Sprite pattern generator base / $800 * $04 = $2000
+vdp_register_7: .byte $1f       ; FG/BG. 1=>Black, E=>Gray
 vdp_end_register_inits:
+
+message:
+  .asciiz " Willem z'n 6502 computer"
 
   ; .align 8
 vdp_patterns:
@@ -244,3 +323,39 @@ vdp_patterns:
   .byte $40,$A8,$10,$00,$00,$00,$00,$00 ; ~
   .byte $A8,$50,$A8,$50,$A8,$50,$A8,$00 ; checkerboard
 vdp_end_patterns:
+
+
+vdp_sprite_patterns:
+  .byte $70,$88,$A8,$B8,$B0,$80,$78,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $00,$00,$00,$00,$00,$00,$00,$00
+vdp_end_sprite_patterns:
