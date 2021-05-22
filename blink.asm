@@ -23,6 +23,11 @@ BALL_Y              = $37
 
   .org $0300
   
+  system_irq:
+    jsr irq
+    rts
+  .org $0308
+
   .macro vdp_write_vram
   lda #<(\1)
   sta VDP_REG
@@ -284,6 +289,9 @@ vdp_enable_display:
   sta VDP_REG
   pla
   sta VDP_VRAM
+  rts
+
+irq:
   rts
 
 vdp_register_inits:

@@ -51,7 +51,7 @@ loop:               jsr read_serial_byte
                     lda #$00                     ; load light off
                     sta PORTB
 
-                    jsr PROGRAM_START
+                    jsr $0308                    ; jump over header
                     jmp loop
 
 load_program:       
@@ -79,7 +79,7 @@ read_serial_byte:   lda ACIA_STATUS
                     rts
 
 nmi:                rti
-irq:                rti
+irq:                jsr $0300
 
                     .org $FFFA
                     .word nmi
