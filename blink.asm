@@ -23,6 +23,8 @@ BALL_Y              = $37
 PADDLE_X            = $38
 PADDLE_Y            = $39
 
+PADDLE_CENTER_NAME = 1
+
   .org $0300
   
   system_irq:
@@ -38,8 +40,12 @@ PADDLE_Y            = $39
   sta VDP_REG
   .endm
 
-vdp_reset:
-  sei
+reset:
+  jsr vdp_setup
+  jsr game_setup
+  jmp game_loop
+
+game_setup:
   lda #0
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
@@ -51,22 +57,28 @@ vdp_reset:
   lda #$aa
   sta PADDLE_Y
 
+  jsr init_ball
+  jsr init_paddle
+
+  rts
+
+vdp_setup:
+  sei
   jsr clear_vram
-  jsr vdp_reg_reset
+  jsr vdp_set_registers
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
   jsr vdp_clear_display
-  jsr initialize_sprite
+  jsr initialize_sprites
 
-  jsr init_ball
-  jsr init_paddle
   jsr vdp_enable_display
   cli
+  rts
 
-main_loop:
+game_loop:
   jsr update_game
   jsr delay
-  jmp main_loop
+  jmp game_loop
 
 clear_vram:
   vdp_write_vram $0000
@@ -81,12 +93,11 @@ clear_vram:
   bne .loop
   rts
 
-vdp_reg_reset:
+vdp_set_registers:
   pha
   phx
-
   ldx #0
-vdp_reg_reset_loop:
+.loop:
   lda vdp_register_inits,x
   sta VDP_REG
   txa
@@ -94,7 +105,7 @@ vdp_reg_reset_loop:
   sta VDP_REG
   inx
   cpx #(vdp_end_register_inits - vdp_register_inits) ; compute number of registers
-  bne vdp_reg_reset_loop
+  bne .loop
   plx
   pla
   rts
@@ -175,7 +186,7 @@ vdp_color_table_loop:
   bne vdp_color_table_loop
   rts
 
-initialize_sprite:
+initialize_sprites:
   vdp_write_vram VDP_SPRITE_PATTERNS_TABLE_BASE
   lda #<vdp_sprite_patterns
   sta VDP_SPRITE_INIT
@@ -218,7 +229,7 @@ init_paddle:
   sta VDP_VRAM
   lda PADDLE_X
   sta VDP_VRAM
-  lda #$01
+  lda #PADDLE_CENTER_NAME
   sta VDP_VRAM  ; name
   lda #$01
   sta VDP_VRAM  ; colour (0001 = black)
