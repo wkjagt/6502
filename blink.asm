@@ -16,16 +16,13 @@ VDP_PATTERN_INIT_HI = $31
 VDP_SPRITE_INIT     = $32
 VDP_SPRITE_INIT_HI  = $33
 
-
 BALL_HOR_DIRECTION  = $34
 BALL_VER_DIRECTION  = $35
 BALL_X              = $36
 BALL_Y              = $37
 
-
-
   .org $0300
-
+  
   .macro vdp_write_vram
   lda #<(\1)
   sta VDP_REG
@@ -38,14 +35,15 @@ vdp_reset:
   lda #0
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
-  lda #$10
+  lda #$10               ; start position
   sta BALL_X
   sta BALL_Y
 
+  jsr clear_vram
   jsr vdp_reg_reset
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
-  jsr vdp_clear_display
+  ; jsr vdp_clear_display
   jsr write_message
   jsr initialize_sprite
   jsr init_ball
@@ -57,6 +55,18 @@ main_loop:
   jsr delay
   jmp main_loop
 
+clear_vram:
+  vdp_write_vram $0000
+  ldx #$ff
+  ldy #$40
+  lda #$0
+.loop:
+  sta VDP_VRAM
+  dex
+  bne .loop
+  dey
+  bne .loop
+  rts
 
 vdp_reg_reset:
   pha
@@ -145,13 +155,12 @@ vdp_name_table_loop:
 vdp_initialize_color_table:
   vdp_write_vram VDP_COLOR_TABLE_BASE
   ldx #$20
-  lda #$1a   ; dark blue / white
+  lda #$1a   ; color
 vdp_color_table_loop:
   sta VDP_VRAM
   dex
   bne vdp_color_table_loop
   rts
-
 
 initialize_sprite:
   vdp_write_vram VDP_SPRITE_PATTERNS_TABLE_BASE
@@ -177,13 +186,14 @@ initialize_sprite:
   rts
 
 init_ball:
+  vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
   lda BALL_Y
   sta VDP_VRAM
   lda BALL_X
   sta VDP_VRAM
   lda #0
   sta VDP_VRAM  ; name
-  lda #$0d
+  lda #$01
   sta VDP_VRAM  ; colour (0001 = black)
   lda #$d0
   sta VDP_VRAM  ; ignore all other sprites
