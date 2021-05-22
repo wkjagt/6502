@@ -20,12 +20,15 @@ BALL_HOR_DIRECTION  = $34
 BALL_VER_DIRECTION  = $35
 BALL_X              = $36
 BALL_Y              = $37
+PADDLE_X            = $38
+PADDLE_Y            = $39
 
   .org $0300
   
   system_irq:
     jsr irq
     rts
+
   .org $0308
 
   .macro vdp_write_vram
@@ -35,7 +38,6 @@ BALL_Y              = $37
   sta VDP_REG
   .endm
 
-
 vdp_reset:
   sei
   lda #0
@@ -43,7 +45,11 @@ vdp_reset:
   sta BALL_VER_DIRECTION ; 0: down, 2: up
   lda #$10               ; start position
   sta BALL_X
+  sta PADDLE_X
+  lda #$20 
   sta BALL_Y
+  lda #$aa
+  sta PADDLE_Y
 
   jsr clear_vram
   jsr vdp_reg_reset
@@ -51,12 +57,14 @@ vdp_reset:
   jsr vdp_initialize_color_table
   jsr vdp_clear_display
   jsr initialize_sprite
+
   jsr init_ball
+  jsr init_paddle
   jsr vdp_enable_display
   cli
 
 main_loop:
-  jsr update_ball
+  jsr update_game
   jsr delay
   jmp main_loop
 
@@ -200,14 +208,29 @@ init_ball:
   sta VDP_VRAM  ; name
   lda #$01
   sta VDP_VRAM  ; colour (0001 = black)
+  ; lda #$d0
+  ; sta VDP_VRAM  ; ignore all other sprites
+  rts
+
+init_paddle:
+  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
+  lda PADDLE_Y
+  sta VDP_VRAM
+  lda PADDLE_X
+  sta VDP_VRAM
+  lda #$01
+  sta VDP_VRAM  ; name
+  lda #$01
+  sta VDP_VRAM  ; colour (0001 = black)
   lda #$d0
   sta VDP_VRAM  ; ignore all other sprites
   rts
 
-update_ball:
+update_game:
   jsr set_ball_hor_direction
   jsr set_ball_ver_direction
   jsr set_ball_pos
+  jsr set_paddle_pos
   rts
 
 draw_ball:
@@ -215,6 +238,14 @@ draw_ball:
   lda BALL_Y
   sta VDP_VRAM
   lda BALL_X
+  sta VDP_VRAM
+  rts
+
+draw_paddle:
+  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
+  lda PADDLE_Y
+  sta VDP_VRAM
+  lda PADDLE_X
   sta VDP_VRAM
   rts
 
@@ -242,7 +273,7 @@ verify_top_border:
   sta BALL_VER_DIRECTION
   rts
 verify_bottom_border:
-  cmp #$B7
+  cmp #$a3
   bne .done
   lda #0
   sta BALL_VER_DIRECTION
@@ -266,11 +297,16 @@ incr_ball_y:
   inc BALL_Y
   rts
 
+set_paddle_pos:
+  lda BALL_X
+  sta PADDLE_X
+  rts
+
 delay:
   phx
   phy
   ldx #$ff
-  ldy #$05
+  ldy #$07
 delay_loop:
   dex
   bne delay_loop
@@ -299,6 +335,7 @@ irq:
   and #%10000000                ; highest bit is interrupt flag
   beq .done
   jsr draw_ball
+  jsr draw_paddle
 .done
   plx
   ply
@@ -457,7 +494,7 @@ vdp_end_patterns:
 
 vdp_sprite_patterns:
   .byte $3c,$42,$f1,$f9,$fd,$fd,$7e,$3c    ; ball 
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle center
   ; .byte $00,$00,$00,$00,$00,$00,$00,$00
   ; .byte $00,$00,$00,$00,$00,$00,$00,$00
   ; .byte $00,$00,$00,$00,$00,$00,$00,$00
