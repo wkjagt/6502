@@ -37,6 +37,7 @@ BALL_Y              = $37
 
 
 vdp_reset:
+  sei
   lda #0
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
@@ -48,15 +49,14 @@ vdp_reset:
   jsr vdp_reg_reset
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
-  ; jsr vdp_clear_display
-  jsr write_message
+  jsr vdp_clear_display
   jsr initialize_sprite
   jsr init_ball
   jsr vdp_enable_display
+  cli
 
 main_loop:
   jsr update_ball
-  jsr draw_ball
   jsr delay
   jmp main_loop
 
@@ -292,11 +292,19 @@ vdp_enable_display:
   rts
 
 irq:
+  pha
+  phy
+  phx
+  lda VDP_REG                   ; read status register
+  jsr draw_ball
+  plx
+  ply
+  pla
   rts
 
 vdp_register_inits:
 vdp_register_0: .byte %00000000 ; 0  0  0  0  0  0  M3 EXTVDP
-vdp_register_1: .byte %10000000 ; 16k Bl IE M1 M2 0 Siz MAG
+vdp_register_1: .byte %10100000 ; 16k Bl IE M1 M2 0 Siz MAG
 vdp_register_2: .byte $01       ; Name table base / $400 * $00 = $0000
 vdp_register_3: .byte $08       ; Color table base / $40 * $10 = $0400
 vdp_register_4: .byte $01       ; Pattern table base / $800 * $01 = $0800

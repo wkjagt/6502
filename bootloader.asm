@@ -25,6 +25,7 @@ PROGRAM_START          = $0300
 
 reset: 
 setup:              
+                    cli
 setup_via:          lda #%11111111
                     sta DDRA
                     sta DDRB
@@ -79,7 +80,8 @@ read_serial_byte:   lda ACIA_STATUS
                     rts
 
 nmi:                rti
-irq:                jsr $0300
+irq:                jsr PROGRAM_START           ; interrupt handler needs to be at the start of the program
+                    rti
 
                     .org $FFFA
                     .word nmi
