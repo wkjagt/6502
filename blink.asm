@@ -296,7 +296,10 @@ irq:
   phy
   phx
   lda VDP_REG                   ; read status register
+  and #%10000000                ; highest bit is interrupt flag
+  beq .done
   jsr draw_ball
+.done
   plx
   ply
   pla
