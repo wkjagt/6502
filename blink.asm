@@ -297,16 +297,14 @@ set_paddle_pos:
   bcc .max_left
   cmp #$f0
   bcs .max_right
-  sta PADDLE_X
   jmp .done
 .max_left:
   lda #$0c
-  sta PADDLE_X
   jmp .done
 .max_right
   lda #$f0
-  sta PADDLE_X
 .done
+  sta PADDLE_X
   rts
 
 delay:
