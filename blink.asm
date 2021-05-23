@@ -1,6 +1,8 @@
 ; TMS9918A
 VDP_VRAM               = $8000
 VDP_REG                = $8001
+VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
+VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
 
 VDP_NAME_TABLE_BASE            = $0400
 VDP_PATTERN_TABLE_BASE         = $0800
@@ -20,7 +22,6 @@ BALL_X              = $36
 BALL_Y              = $37
 PADDLE_X            = $38
 PADDLE_Y            = $39
-
 PADDLE_CENTER_NAME = 1
 
   .org $0300
@@ -32,43 +33,31 @@ PADDLE_CENTER_NAME = 1
   .org $0308
 
   .macro vdp_write_vram
+  pha
   lda #<(\1)
   sta VDP_REG
   lda #(VDP_WRITE_VRAM_BIT | >\1) ; see second register write pattern
   sta VDP_REG
+  pla
   .endm
 
 reset:
   jsr vdp_setup
   jsr game_setup
+  cli
   jmp game_loop
 
 game_setup:
-  lda #0
-  sta BALL_HOR_DIRECTION ; 0: left, 1: right
-  sta BALL_VER_DIRECTION ; 0: down, 2: up
-  lda #$10               ; start position
-  sta BALL_X
-  sta PADDLE_X
-  lda #$20 
-  sta BALL_Y
-  lda #$aa
-  sta PADDLE_Y
-
   jsr init_ball
   jsr init_paddle
 
   rts
 
 vdp_setup:
-  sei
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
   jsr vdp_clear_display
   jsr initialize_sprites
-
-  ; jsr vdp_enable_display
-  cli
   rts
 
 game_loop:
@@ -118,30 +107,6 @@ vdp_clear_display_loop:
   bne vdp_clear_display_loop
   rts
 
-write_message:
-  vdp_write_vram VDP_NAME_TABLE_BASE
-  ldx #0
-write_message_loop:
-  lda message,x
-  beq .done
-  sta VDP_VRAM
-  inx
-  jmp write_message_loop
-.done:
-  rts
-
-vdp_initialize_name_table:
-  ; store increasing values into name table to fill the screen with 256 values
-  pha
-  vdp_write_vram VDP_NAME_TABLE_BASE      ; set the vram write address to the nametable base
-  lda #0                                  ; Load 0 into A
-vdp_name_table_loop:
-  sta VDP_VRAM                            ; store A into name table
-  inc                                     ; increment A
-  bne vdp_name_table_loop                 ; will be true after $FF
-  pla
-  rts
-
 vdp_initialize_color_table:
   vdp_write_vram VDP_COLOR_TABLE_BASE
   ldx #$20
@@ -176,6 +141,14 @@ initialize_sprites:
   rts
 
 init_ball:
+  lda #0
+  sta BALL_HOR_DIRECTION ; 0: left, 1: right
+  sta BALL_VER_DIRECTION ; 0: down, 2: up
+  lda #$10               ; start position
+  sta BALL_X
+  lda #$20 
+  sta BALL_Y
+
   vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
   lda BALL_Y
   sta VDP_VRAM
@@ -185,11 +158,14 @@ init_ball:
   sta VDP_VRAM  ; name
   lda #$01
   sta VDP_VRAM  ; colour (0001 = black)
-  ; lda #$d0
-  ; sta VDP_VRAM  ; ignore all other sprites
   rts
 
 init_paddle:
+  lda #$10               ; start position
+  sta PADDLE_X
+  lda #$aa
+  sta PADDLE_Y
+
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
   lda PADDLE_Y
   sta VDP_VRAM
@@ -212,18 +188,22 @@ update_game:
 
 draw_ball:
   vdp_write_vram VDP_SPRITE_ATTR_TABLE_BASE
+  pha
   lda BALL_Y
   sta VDP_VRAM
   lda BALL_X
   sta VDP_VRAM
+  pla
   rts
 
 draw_paddle:
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
+  pha
   lda PADDLE_Y
   sta VDP_VRAM
   lda PADDLE_X
   sta VDP_VRAM
+  pla
   rts
 
 set_ball_hor_direction:
@@ -294,6 +274,7 @@ delay_loop:
   rts
 
 irq:
+  sei
   pha
   phy
   phx
@@ -306,12 +287,9 @@ irq:
   plx
   ply
   pla
+  cli
   rts
 
-message:
-  .asciiz " The ball is a little buggy"
-
-  ; .align 8
 vdp_patterns:
 ; line drawing
   .byte $00,$00,$00,$FF,$FF,$00,$00,$00 ; lr
@@ -449,35 +427,7 @@ vdp_end_patterns:
 
 vdp_sprite_patterns:
   .byte $3c,$42,$f1,$f9,$fd,$fd,$7e,$3c    ; ball 
+  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle left
   .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle center
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
-  ; .byte $00,$00,$00,$00,$00,$00,$00,$00
+  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle right
 vdp_end_sprite_patterns:
