@@ -22,7 +22,9 @@ BALL_X              = $36
 BALL_Y              = $37
 PADDLE_X            = $38
 PADDLE_Y            = $39
-PADDLE_CENTER_NAME = 1
+PADDLE_LEFT_NAME    = $1
+PADDLE_CENTER_NAME  = $2
+PADDLE_RIGHT_NAME   = $3
 
   .org $0300
   
@@ -161,20 +163,39 @@ init_ball:
   rts
 
 init_paddle:
-  lda #$10               ; start position
+  lda #$0
   sta PADDLE_X
   lda #$aa
   sta PADDLE_Y
 
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
-  lda PADDLE_Y
+  lda #$aa
   sta VDP_VRAM
-  lda PADDLE_X
+  lda #0
+  sta VDP_VRAM
+  lda #PADDLE_LEFT_NAME
+  sta VDP_VRAM  ; name
+  lda #$01
+  sta VDP_VRAM  ; colour (0001 = black)
+
+  lda #$aa
+  sta VDP_VRAM
+  lda #0
   sta VDP_VRAM
   lda #PADDLE_CENTER_NAME
   sta VDP_VRAM  ; name
   lda #$01
   sta VDP_VRAM  ; colour (0001 = black)
+
+  lda #$aa
+  sta VDP_VRAM
+  lda #0
+  sta VDP_VRAM
+  lda #PADDLE_RIGHT_NAME
+  sta VDP_VRAM  ; name
+  lda #$01
+  sta VDP_VRAM  ; colour (0001 = black)
+
   lda #$d0
   sta VDP_VRAM  ; ignore all other sprites
   rts
@@ -197,12 +218,28 @@ draw_ball:
   rts
 
 draw_paddle:
-  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4)
   pha
+
+  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4) ; left
+  lda PADDLE_Y
+  sta VDP_VRAM
+  lda PADDLE_X
+  sbc #$7
+  sta VDP_VRAM
+
+  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 8) ; center
   lda PADDLE_Y
   sta VDP_VRAM
   lda PADDLE_X
   sta VDP_VRAM
+
+  vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 12) ; center
+  lda PADDLE_Y
+  sta VDP_VRAM
+  lda PADDLE_X
+  adc #$7
+  sta VDP_VRAM
+
   pla
   rts
 
@@ -256,7 +293,20 @@ incr_ball_y:
 
 set_paddle_pos:
   lda BALL_X
+  cmp #$0c
+  bcc .max_left
+  cmp #$f0
+  bcs .max_right
   sta PADDLE_X
+  jmp .done
+.max_left:
+  lda #$0c
+  sta PADDLE_X
+  jmp .done
+.max_right
+  lda #$f0
+  sta PADDLE_X
+.done
   rts
 
 delay:
@@ -278,7 +328,7 @@ irq:
   pha
   phy
   phx
-  lda VDP_REG                   ; read status register
+  lda VDP_REG                   ; read VDP status register
   and #%10000000                ; highest bit is interrupt flag
   beq .done
   jsr draw_ball
@@ -427,7 +477,7 @@ vdp_end_patterns:
 
 vdp_sprite_patterns:
   .byte $3c,$42,$f1,$f9,$fd,$fd,$7e,$3c    ; ball 
-  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle left
-  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle center
-  .byte $ff,$ff,$ff,$ff,$00,$00,$00,$00    ; paddle right
+  .byte $7f,$ff,$ff,$ff,$7f,$00,$00,$00    ; paddle left
+  .byte $ff,$ff,$ff,$ff,$ff,$00,$00,$00    ; paddle center
+  .byte $fe,$ff,$ff,$ff,$fe,$00,$00,$00    ; paddle right
 vdp_end_sprite_patterns:
