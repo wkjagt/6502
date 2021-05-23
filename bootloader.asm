@@ -12,9 +12,6 @@ ACIA_STATUS  = ACIA_START + 1
 ACIA_COMMAND = ACIA_START + 2
 ACIA_CONTROL = ACIA_START + 3
 
-VDP_VRAM     = $8000
-VDP_REG      = $8001
-
 ACIA_STATUS_RX_FULL    = 1 << 3
 
 PROGRAM_WRITE_PTR_L    = $0002
@@ -23,9 +20,18 @@ PROGRAM_START          = $0300
 
   .org $c000
 
+  .include "vdp.asm"
+
+  .macro vdp_write_vram
+  lda #<(\1)
+  sta VDP_REG
+  lda #(VDP_WRITE_VRAM_BIT | >\1) ; see second register write pattern
+  sta VDP_REG
+  .endm
+
 reset: 
 setup:              
-                    cli
+                    sei                          ; disable interrupts
 setup_via:          lda #%11111111
                     sta DDRA
                     sta DDRB
@@ -41,15 +47,18 @@ setup_program_ptrs: lda #0                       ; reset counters that count prg
                     sta PROGRAM_WRITE_PTR_L
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
+setup_vdp:          jsr vdp_setup
+
+                    lda #$ff                     ; ready light on
+                    sta PORTB
 
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
-                    
-                    lda #$ff                     ; load light on
-                    sta PORTB
+                    lda #$00                     ; ready light on
+                    sta PORTB                    
                     jsr load_program
-                    lda #$00                     ; load light off
+                    lda #$ff                     ; ready light on
                     sta PORTB
 
                     jsr $0308                    ; jump over header
