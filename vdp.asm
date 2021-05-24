@@ -25,7 +25,7 @@ VDP_SPRITE_INIT_HI  = $33
 vdp_setup:
   jsr clear_vram
   jsr vdp_set_registers
-  jsr vdp_enable_display
+  ; jsr vdp_enable_display
   rts
 
 clear_vram:
@@ -58,16 +58,16 @@ vdp_set_registers:
   pla
   rts
 
-vdp_enable_display:
-  pha
-  lda vdp_register_1
-  ora #%01000000 ; enable the active display
-  sta VDP_REG
-  lda #(VDP_REGISTER_BITS | 1)
-  sta VDP_REG
-  pla
-  sta VDP_VRAM
-  rts
+; vdp_enable_display:
+;   pha
+;   lda vdp_register_1
+;   ora #%01000000 ; enable the active display
+;   sta VDP_REG
+;   lda #(VDP_REGISTER_BITS | 1)
+;   sta VDP_REG
+;   pla
+;   sta VDP_VRAM
+;   rts
 
 vdp_register_inits:
 vdp_register_0: .byte %00000000 ; 0  0  0  0  0  0  M3 EXTVDP
