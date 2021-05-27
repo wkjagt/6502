@@ -26,6 +26,8 @@ PADDLE_LEFT_NAME    = $1
 PADDLE_CENTER_NAME  = $2
 PADDLE_RIGHT_NAME   = $3
 
+BLOCKS_START_ADDRESS = $60
+
   .org $0300
   
   system_irq:
@@ -60,9 +62,9 @@ vdp_setup:
   ; patterns
   jsr vdp_initialize_pattern_table
   jsr vdp_initialize_color_table
-  jsr vdp_clear_display
   ; sprites
   jsr initialize_sprites
+  jsr vdp_clear_display
   jsr vdp_enable_display
   rts
 
@@ -174,8 +176,21 @@ init_paddle:
   rts
 
 init_blocks:
+  ; block width = 24 (3 sprites)
+  ; first block starts at x = 8
+  ldx #$0 ; index
+  lda #$8 ; x coordinate
+  ldy #$8 ; y coordinate
+  sta BLOCKS_START_ADDRESS, x
+  inx
+  adc #$24
+  sta BLOCKS_START_ADDRESS, x
+  inx
+  
+
+  ; write blocks to name table to display on screen
   vdp_write_vram (VDP_NAME_TABLE_BASE + 33)
-  ldx #$a
+  ldx #$a ; 10 blocks
 .blocks_loop:
   ldy #$1
 .block_loop:
@@ -202,9 +217,9 @@ draw_ball:
   lda BALL_X
   sta VDP_VRAM
   lda #0
-  sta VDP_VRAM  ; name
+  sta VDP_VRAM
   lda #$01
-  sta VDP_VRAM  ; colour (0001 = black)
+  sta VDP_VRAM
   rts
 
 draw_paddle:
@@ -217,18 +232,18 @@ draw_paddle:
   sbc #$7
   sta VDP_VRAM
   lda #PADDLE_LEFT_NAME
-  sta VDP_VRAM  ; name
+  sta VDP_VRAM
   lda #$01
-  sta VDP_VRAM  ; colour (0001 = black)
+  sta VDP_VRAM
 
   lda PADDLE_Y
   sta VDP_VRAM
   lda PADDLE_X
   sta VDP_VRAM
   lda #PADDLE_CENTER_NAME
-  sta VDP_VRAM  ; name
+  sta VDP_VRAM
   lda #$01
-  sta VDP_VRAM  ; colour (0001 = black)
+  sta VDP_VRAM
 
   lda PADDLE_Y
   sta VDP_VRAM
@@ -236,9 +251,9 @@ draw_paddle:
   adc #$7
   sta VDP_VRAM
   lda #PADDLE_RIGHT_NAME
-  sta VDP_VRAM  ; name
+  sta VDP_VRAM
   lda #$01
-  sta VDP_VRAM  ; colour (0001 = black)
+  sta VDP_VRAM
 
   pla
   rts
