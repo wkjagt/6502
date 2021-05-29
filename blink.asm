@@ -22,9 +22,14 @@ BALL_X              = $36
 BALL_Y              = $37
 PADDLE_X            = $38
 PADDLE_Y            = $39
+BLOCK_TO_REMOVE     = $40
+BLOCK_STATES        = $41 ; 8 bits, one bit for each block
+
 PADDLE_LEFT_NAME    = $1
 PADDLE_CENTER_NAME  = $2
 PADDLE_RIGHT_NAME   = $3
+
+
 
 BLOCKS_START_ADDRESS = $60
 
@@ -159,7 +164,7 @@ initialize_sprites:
   rts
 
 init_ball:
-  lda #0
+  lda #1
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
   lda #$10               ; start position
@@ -176,36 +181,26 @@ init_paddle:
   rts
 
 init_blocks:
-  ; block width = 24 (3 sprites)
-  ; first block starts at x = 8
-  ldx #$0 ; index
-  lda #$8 ; x coordinate
-  ldy #$8 ; y coordinate
-  sta BLOCKS_START_ADDRESS, x
-  inx
-  adc #$24
-  sta BLOCKS_START_ADDRESS, x
-  inx
-  
-
+  lda #10 ; a non existent block
+  sta $BLOCK_TO_REMOVE
   ; write blocks to name table to display on screen
-  vdp_write_vram (VDP_NAME_TABLE_BASE + 33)
-  ldx #$a ; 10 blocks
+  vdp_write_vram VDP_NAME_TABLE_BASE
+  ldx #$8 ; number of  blocks
 .blocks_loop:
-  ldy #$1
+  ldy #$1 ; first block pattern (left)
 .block_loop:
   sty VDP_VRAM
-  iny
-  cpy #$4
+  iny     ; next block pattern
+  cpy #$5
   bne .block_loop
   dex
   bne .blocks_loop
   rts
 
-
 update_game:
-  jsr set_ball_hor_direction
-  jsr set_ball_ver_direction
+  jsr side_wall_collision
+  jsr floor_ceiling_collision
+  jsr block_collision
   jsr set_ball_pos
   jsr set_paddle_pos
   rts
@@ -258,7 +253,84 @@ draw_paddle:
   pla
   rts
 
-set_ball_hor_direction:
+block_collision:
+  lda BALL_Y
+  cmp #$05
+  bne .done
+  ; calculate which of the 8 blocks we're touching
+  lda BALL_X
+  lsr
+  lsr
+  lsr
+  lsr
+  lsr
+  ; a now holds the 0 indexed block number that was touched
+  ; store it in zero page so we can remove the block on vblank
+  sta $BLOCK_TO_REMOVE
+  lda #$1
+  sta BALL_VER_DIRECTION
+.done:
+  rts
+
+remove_block:
+  lda $BLOCK_TO_REMOVE
+  ; register A holds the number of the block
+  ; use this to clear that block from the name table
+  ; blocks take up 4 bytes each in the name table
+  ; shift left twice to multiple by four
+  asl
+  asl
+
+  ; load the address into VDP reg
+  ; VDP_NAME_TABLE_BASE = $0400
+  ; so to so to clear a block, we need to write the clear
+  ; pattern to addresses:
+  ; $0400 + (4 * block number) + 0
+  ; $0400 + (4 * block number) + 1
+  ; $0400 + (4 * block number) + 2
+  ; $0400 + (4 * block number) + 3
+
+  ; but we're writing these 16 bit addresses in two
+  ; 8 bit writes to a VDP register. The first will always
+  ; be $04 (the high byte). That means that what remains
+  ; to calculate is:
+  ; 4 * block number + 0
+  ; 4 * block number + 1
+  ; 4 * block number + 2
+  ; 4 * block number + 3
+
+  ; We already put 4 * block number in the A register above, so
+  ; what really remains to calculate is:
+  ; A + 0
+  ; A + 1
+  ; A + 2
+  ; A + 3
+  tay ; keep two copies of A. One because we're reusing A for something
+  tax ; and one because we need it for a loop
+  ; send the least significant byte to the VDP
+  lda #<VDP_NAME_TABLE_BASE
+
+  ; increment a x times. Don't increment if x = 0
+.incloop
+  cpx #0
+  beq .write
+  dex
+  ina
+  jmp .incloop
+.write:
+  sta VDP_REG
+  
+  lda #(>VDP_NAME_TABLE_BASE)
+  ora #%01000000
+  sta VDP_REG
+  lda #0
+  sta VDP_VRAM
+  sta VDP_VRAM
+  sta VDP_VRAM
+  sta VDP_VRAM
+  rts
+
+side_wall_collision:
 verify_left_border:
   lda BALL_X
   cmp #$4
@@ -274,10 +346,10 @@ verify_right_border:
 .done:
   rts
 
-set_ball_ver_direction:
+floor_ceiling_collision:
 verify_top_border:
   lda BALL_Y
-  cmp #$0f
+  cmp #$00
   bne verify_bottom_border
   lda #$1
   sta BALL_VER_DIRECTION
@@ -347,6 +419,7 @@ irq:
   beq .done
   jsr draw_ball
   jsr draw_paddle
+  jsr remove_block
 .done
   plx
   ply
@@ -357,6 +430,7 @@ irq:
 vdp_patterns:
   .byte $00,$00,$00,$00,$00,$00,$00,$00 ; empty, used to clear the screen
   .byte $7f,$7f,$7f,$7f,$7f,$7f,$7f,$7f ; block left
+  .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff ; block center
   .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff ; block center
   .byte $fe,$fe,$fe,$fe,$fe,$fe,$fe,$fe ; block right
 vdp_end_patterns:
