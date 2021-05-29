@@ -23,7 +23,7 @@ BALL_Y              = $37
 PADDLE_X            = $38
 PADDLE_Y            = $39
 BLOCK_TO_REMOVE     = $40
-BLOCK_STATES        = $41 ; 8 bits, one bit for each block
+BLOCK_STATES_BASE   = $41 ; 8 bytes, one for each block
 
 PADDLE_LEFT_NAME    = $1
 PADDLE_CENTER_NAME  = $2
@@ -167,7 +167,7 @@ init_ball:
   lda #1
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
-  lda #$10               ; start position
+  lda #$15               ; start position
   sta BALL_X
   lda #$20 
   sta BALL_Y
@@ -181,8 +181,15 @@ init_paddle:
   rts
 
 init_blocks:
+  lda #1 ; block present
+  ldx #8 ; counter and memory offset for 8 blocks
+.set_next_block
+  sta BLOCK_STATES_BASE, x
+  dex
+  bne .set_next_block 
+
   lda #10 ; a non existent block
-  sta $BLOCK_TO_REMOVE
+  sta BLOCK_TO_REMOVE
   ; write blocks to name table to display on screen
   vdp_write_vram VDP_NAME_TABLE_BASE
   ldx #$8 ; number of  blocks
@@ -257,6 +264,7 @@ block_collision:
   lda BALL_Y
   cmp #$05
   bne .done
+  
   ; calculate which of the 8 blocks we're touching
   lda BALL_X
   lsr
@@ -266,14 +274,22 @@ block_collision:
   lsr
   ; a now holds the 0 indexed block number that was touched
   ; store it in zero page so we can remove the block on vblank
-  sta $BLOCK_TO_REMOVE
+  tax    ; use block number as offset to turn off blocks in block states
+
+  lda BLOCK_STATES_BASE, x
+  beq .done
+  txa 
+  sta BLOCK_TO_REMOVE
+  lda #0 ; 0 to turn off block
+  sta BLOCK_STATES_BASE, x
+
   lda #$1
   sta BALL_VER_DIRECTION
 .done:
   rts
 
 remove_block:
-  lda $BLOCK_TO_REMOVE
+  lda BLOCK_TO_REMOVE
   ; register A holds the number of the block
   ; use this to clear that block from the name table
   ; blocks take up 4 bytes each in the name table
@@ -399,7 +415,7 @@ delay:
   phx
   phy
   ldx #$ff
-  ldy #$07
+  ldy #$04
 delay_loop:
   dex
   bne delay_loop
