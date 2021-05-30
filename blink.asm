@@ -29,10 +29,6 @@ PADDLE_LEFT_NAME    = $1
 PADDLE_CENTER_NAME  = $2
 PADDLE_RIGHT_NAME   = $3
 
-
-
-BLOCKS_START_ADDRESS = $60
-
   .org $0300
   
   system_irq:
@@ -164,7 +160,7 @@ initialize_sprites:
   rts
 
 init_ball:
-  lda #1
+  lda #0
   sta BALL_HOR_DIRECTION ; 0: left, 1: right
   sta BALL_VER_DIRECTION ; 0: down, 2: up
   lda #$15               ; start position
@@ -184,8 +180,8 @@ init_blocks:
   lda #1 ; block present
   ldx #8 ; counter and memory offset for 8 blocks
 .set_next_block
-  sta BLOCK_STATES_BASE, x
   dex
+  sta BLOCK_STATES_BASE, x
   bne .set_next_block 
 
   lda #10 ; a non existent block
@@ -262,7 +258,7 @@ draw_paddle:
 
 block_collision:
   lda BALL_Y
-  cmp #$05
+  cmp #$05   ; bottom of blocks
   bne .done
   
   ; calculate which of the 8 blocks we're touching
@@ -415,7 +411,7 @@ delay:
   phx
   phy
   ldx #$ff
-  ldy #$04
+  ldy #$8
 delay_loop:
   dex
   bne delay_loop
