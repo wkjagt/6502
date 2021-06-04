@@ -1,3 +1,9 @@
+VIA_START = $6000
+PORTA = VIA_START + 1
+PORTB = VIA_START + 0
+DDRA  = VIA_START + 3
+DDRB  = VIA_START + 2
+
 ; TMS9918A
 VDP_VRAM               = $8000
 VDP_REG                = $8001
@@ -47,6 +53,9 @@ PADDLE_RIGHT_NAME   = $3
   .endm
 
 reset:
+  lda #0
+  sta DDRA ; read
+
   jsr vdp_setup
   jsr game_setup
   cli
@@ -392,7 +401,7 @@ incr_ball_y:
   rts
 
 set_paddle_pos:
-  lda BALL_X
+  lda PORTA
   cmp #$0c
   bcc .max_left
   cmp #$f0
