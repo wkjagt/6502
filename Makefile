@@ -6,4 +6,5 @@ upload_rom:
 
 load:
 	vasm6502_oldstyle -Fbin -dotdir -c02 $(program).asm -o $(program).rom
-	ROM=$(program).rom ruby upload_script/serial.rb
+	# ROM=$(program).rom ruby upload_script/serial.rb
+	ROM=$(program).rom python upload_script/upload_program.py

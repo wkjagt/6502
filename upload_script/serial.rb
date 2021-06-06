@@ -1,10 +1,11 @@
 require 'bundler/inline'
+require "pry"
 
 gemfile do
   source "https://rubygems.org"
   git_source(:github) {|repo_name| "https://github.com/#{repo_name}" }
   
-  gem "serialport"
+  gem "rubyserial"
   gem "pry"
   gem "progress_bar"
   gem "colorize"
@@ -71,6 +72,15 @@ class Uploader
   end
 
   def open_serial_port(serial)
+    # baudrate -> anInteger: from 50 to 256000, depends on platform.
+
+    # databits -> anInteger: from 5 to 8 (4 is allowed on Windows)
+
+    # stopbits -> anInteger: 1 or 2 (1.5 is not supported)
+
+    # parity -> anInteger: SerialPort::NONE, SerialPort::EVEN,
+    #           SerialPort::ODD, SerialPort::MARK, SerialPort::SPACE
+    #           (MARK and SPACE are not supported on Posix)
     SerialPort.new(serial, 19200, 8, 1, SerialPort::NONE)
   rescue Errno::ENOENT
     raise "Serial device not found"
