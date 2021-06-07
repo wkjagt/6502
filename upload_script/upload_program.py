@@ -3,7 +3,6 @@ import os
 import serial
 from itertools import izip_longest
 import time
-import inspect
 
 class Uploader:
     NOP = 0xea                   # no-op instruction byte to fill left over space with
