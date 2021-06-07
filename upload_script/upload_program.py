@@ -5,15 +5,11 @@ from itertools import izip_longest
 import time
 import inspect
 
-def grouper(size, iterable, fillvalue=None):
-    unpadded = [iter(iterable)] * size
-    return izip_longest(fillvalue=fillvalue, *unpadded)
-
 class Uploader:
     NOP = 0xea                   # no-op instruction byte to fill left over space with
     SOH = chr(0x01)              # start of header
     EOT = chr(0x04)              # end of transmission
-    WRITE_PAUSE = 0.005          # pause between each byte
+    WRITE_PAUSE = 0.0005         # pause between each byte
     PACKET_SIZE = 128
 
     def __init__(self, serial_device_name, program_path):
@@ -24,9 +20,7 @@ class Uploader:
 
     def load_packets(self):
         program_bytes = self.program_bytes()
-        padded = self.add_padding(program_bytes)
-
-        return padded
+        return self.add_padding(program_bytes)
 
     def add_padding(self, program_bytes):
         unpadded = [iter(program_bytes)] * self.PACKET_SIZE
@@ -51,7 +45,6 @@ class Uploader:
         self.write_byte(self.EOT)
         self.serial_port.close()
         
-        
     def upload_packet(self, packet):
         self.write_byte(self.SOH)
         for byte in packet:
@@ -71,7 +64,6 @@ class Uploader:
                 else:
                     break
         return bytes
-        
 
 uploader = Uploader("/dev/tty.usbserial-A700fbj9", os.environ["ROM"])
 uploader.upload()
