@@ -74,7 +74,6 @@ vdp_setup:
   jsr vdp_initialize_color_table
   ; sprites
   jsr initialize_sprites
-  jsr vdp_clear_display
   jsr vdp_enable_display
   rts
 
@@ -110,19 +109,6 @@ vdp_pattern_table_loop:
 
   plx
   pla
-  rts
-
-vdp_clear_display:
-  vdp_write_vram VDP_NAME_TABLE_BASE
-  lda #0
-  ldx #$3
-  ldy #0
-vdp_clear_display_loop:
-  sta VDP_VRAM
-  iny
-  bne vdp_clear_display_loop
-  dex
-  bne vdp_clear_display_loop
   rts
 
 vdp_enable_display:
