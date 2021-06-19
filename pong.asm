@@ -26,6 +26,8 @@ BALL_VER_DIRECTION  = $35
 BALL_X              = $36
 BALL_Y              = $37
 
+BALL_Y_SPEED        = $38
+
 LEFT_PADDLE_Y       = $40
 RIGHT_PADDLE_Y      = $41
 
@@ -49,6 +51,12 @@ RIGHT_PADDLE_Y      = $41
 reset:
   lda #0
   sta DDRA ; direction: read
+  lda #1
+  sta BALL_Y_SPEED
+  lda #$5f
+  sta BALL_Y
+  lda #$7f
+  sta BALL_X
 
   jsr vdp_setup
   ; jsr game_setup
@@ -62,40 +70,38 @@ game_loop:
 
 
 update_game:
-  jsr side_wall_collision
+  ; jsr side_wall_collision
+  jsr paddle_collision
   jsr floor_ceiling_collision
   jsr set_ball_pos
   jsr set_left_paddle_pos
   jsr set_right_paddle_pos
   rts
 
-side_wall_collision:
-verify_left_border:
+paddle_collision:
   lda BALL_X
-  cmp #$6
-  bne verify_right_border ; not currently 0
-  lda #$1
-  sta BALL_HOR_DIRECTION
-  rts
-verify_right_border:
-  cmp #$fb
+  cmp #$07
+  beq .flip_ball_hor_dir
+  cmp #$fa
   bne .done
-  lda #$0
+.flip_ball_hor_dir:
+  lda BALL_HOR_DIRECTION
+  eor #1
   sta BALL_HOR_DIRECTION
-.done:
+.done
   rts
 
 floor_ceiling_collision:
 verify_top_border:
   lda BALL_Y
-  cmp #$00
-  bne verify_bottom_border
+  cmp #$01
+  bcs verify_bottom_border
   lda #$1
   sta BALL_VER_DIRECTION
   rts
 verify_bottom_border:
   cmp #$ba
-  bne .done
+  bcc .done
   lda #0
   sta BALL_VER_DIRECTION
 .done
@@ -112,10 +118,16 @@ incr_ball_x:
 set_ball_pos_y:
   lda BALL_VER_DIRECTION
   bne incr_ball_y
-  dec BALL_Y
+  lda BALL_Y
+  sec
+  sbc BALL_Y_SPEED
+  sta BALL_Y
   rts
 incr_ball_y:
-  inc BALL_Y
+  ; inc BALL_Y
+  lda BALL_Y
+  adc BALL_Y_SPEED
+  sta BALL_Y
   rts
 
 set_left_paddle_pos:
@@ -145,7 +157,7 @@ draw_ball:
 
 draw_left_paddle:
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4) ; offset of 4 to skip the ball attrs
-  lda LEFT_PADDLE_Y
+  lda BALL_Y
   sta VDP_VRAM
   lda #5
   sta VDP_VRAM
@@ -189,7 +201,7 @@ delay:
   phx
   phy
   ldx #$ff
-  ldy #$4
+  ldy #$8
 delay_loop:
   dex
   bne delay_loop
