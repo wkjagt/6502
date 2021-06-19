@@ -77,5 +77,5 @@ vdp_register_3: .byte $08       ; Color table base / $40 * $10 = $0400
 vdp_register_4: .byte $01       ; Pattern table base / $800 * $01 = $0800
 vdp_register_5: .byte $02       ; Sprite attribute table base / $80 * $60 = $3000
 vdp_register_6: .byte $00       ; Sprite pattern generator base / $800 * $04 = $2000
-vdp_register_7: .byte $77       ; FG/BG. 1=>Black, E=>Gray
+vdp_register_7: .byte $f1       ; FG/BG. 1=>Black, E=>Gray
 vdp_end_register_inits:
