@@ -36,7 +36,7 @@ GAME_SPEED          = $3d
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
-INITIAL_GAME_SPEED  = $6      ; this is actually a delay, so a lower number is faster
+INITIAL_GAME_SPEED  = $a      ; this is actually a delay, so a lower number is faster
 
 
   .org $0300
@@ -65,7 +65,7 @@ reset:
 game_setup:
   lda #0
   sta DDRA ; direction: read
-  lda #1
+  lda #2
   sta BALL_Y_SPEED
   lda #1
   sta BALL_VER_DIRECTION
@@ -109,14 +109,42 @@ paddle_collision:
   lda BALL_Y
   sec
   sbc TEMP_PADDLE_Y
-  bcc .no_collision; carry is clear: negative: done
+  bcc .no_collision
   cmp #$f
   bcs .no_collision
-  ; flip direction
+  jsr flip_hor_direction
+  jsr set_ver_ball_speed
+.no_collision
+  rts
+
+set_ver_ball_speed:
+  ; at this point A contains where the ball hit the paddle between 0 and f
+  ; divide into 4 zones
+  lsr
+  lsr
+  bne .test_bottom
+  lda #2                  ; this means it's the top of the paddle
+  sta BALL_Y_SPEED
+  jmp .done
+.test_bottom
+  cmp #3
+  bne .center
+  lda #1                  ; this means it's the bottom of the paddle
+  sta BALL_Y_SPEED
+  jmp .done
+.center
+  lda #1
+  sta BALL_Y_SPEED
+.done:
+  rts
+
+
+flip_hor_direction:
+  pha
   lda BALL_HOR_DIRECTION
   eor #1
   sta BALL_HOR_DIRECTION
-.no_collision
+  pla
   rts
 
 side_wall_collision:
@@ -127,9 +155,7 @@ side_wall_collision:
   bne .return
 .continue:
   jsr blink_screen
-  lda BALL_HOR_DIRECTION
-  eor #1
-  sta BALL_HOR_DIRECTION
+  jsr flip_hor_direction
 .return:
   rts
 
