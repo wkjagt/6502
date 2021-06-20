@@ -27,9 +27,14 @@ BALL_X              = $36
 BALL_Y              = $37
 
 BALL_Y_SPEED        = $38
-
+TEMP_PADDLE_Y       = $39
 LEFT_PADDLE_Y       = $40
 RIGHT_PADDLE_Y      = $41
+
+; constants
+LEFT_PADDLE_X       = $20
+RIGHT_PADDLE_X      = $d8
+
 
   .org $0300
   
@@ -53,13 +58,15 @@ reset:
   sta DDRA ; direction: read
   lda #1
   sta BALL_Y_SPEED
+  lda #0
+  sta BALL_VER_DIRECTION
+  sta BALL_HOR_DIRECTION
   lda #$5f
   sta BALL_Y
   lda #$7f
   sta BALL_X
 
   jsr vdp_setup
-  ; jsr game_setup
   cli
   jmp game_loop
 
@@ -68,10 +75,9 @@ game_loop:
   jsr delay
   jmp game_loop
 
-
 update_game:
-  ; jsr side_wall_collision
   jsr paddle_collision
+  jsr side_wall_collision
   jsr floor_ceiling_collision
   jsr set_ball_pos
   jsr set_left_paddle_pos
@@ -80,29 +86,53 @@ update_game:
 
 paddle_collision:
   lda BALL_X
-  cmp #$07
-  beq .flip_ball_hor_dir
-  cmp #$fa
-  bne .done
-.flip_ball_hor_dir:
+  cmp #LEFT_PADDLE_X + 2      ; taking paddle thickness into account
+  bne .check_right_paddle
+  ldx LEFT_PADDLE_Y
+  jmp .continue
+.check_right_paddle
+  cmp #RIGHT_PADDLE_X + 6     ; paddle thickness again
+  bne .no_collision
+  ldx RIGHT_PADDLE_Y
+.continue:
+  stx TEMP_PADDLE_Y
+  lda BALL_Y
+  adc #2
+  sec
+  sbc TEMP_PADDLE_Y
+  bcc .no_collision; carry is clear: negative: done
+  cmp #$a
+  bcs .no_collision
+  ; flip direction
   lda BALL_HOR_DIRECTION
   eor #1
   sta BALL_HOR_DIRECTION
-.done
+.no_collision
+  rts
+
+side_wall_collision:
+  lda BALL_X
+  cmp #$04
+  beq .continue
+  cmp #$fb
+  bne .return
+.continue:
+  lda BALL_HOR_DIRECTION
+  eor #1
+  sta BALL_HOR_DIRECTION
+.return:
   rts
 
 floor_ceiling_collision:
 verify_top_border:
   lda BALL_Y
   cmp #$01
-  bcs verify_bottom_border
-  lda #$1
-  sta BALL_VER_DIRECTION
-  rts
-verify_bottom_border:
+  bcc .flip_ball_ver_dir
   cmp #$ba
   bcc .done
-  lda #0
+.flip_ball_ver_dir:
+  lda BALL_VER_DIRECTION
+  eor #1
   sta BALL_VER_DIRECTION
 .done
   rts
@@ -124,7 +154,6 @@ set_ball_pos_y:
   sta BALL_Y
   rts
 incr_ball_y:
-  ; inc BALL_Y
   lda BALL_Y
   adc BALL_Y_SPEED
   sta BALL_Y
@@ -133,13 +162,18 @@ incr_ball_y:
 set_left_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
+  ; lda BALL_Y
+  ; adc #2
   sta LEFT_PADDLE_Y
   rts
-
 
 set_right_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
+  ; lda BALL_Y
+  ; sec
+  ; sbc #$6   ; max 3
+
   sta RIGHT_PADDLE_Y
   rts
 
@@ -157,9 +191,9 @@ draw_ball:
 
 draw_left_paddle:
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 4) ; offset of 4 to skip the ball attrs
-  lda BALL_Y
+  lda LEFT_PADDLE_Y
   sta VDP_VRAM
-  lda #5
+  lda #LEFT_PADDLE_X
   sta VDP_VRAM
   lda #1
   sta VDP_VRAM
@@ -169,9 +203,9 @@ draw_left_paddle:
 
 draw_right_paddle:
   vdp_write_vram (VDP_SPRITE_ATTR_TABLE_BASE + 8) ; offset of 4 to skip the ball attrs
-  lda BALL_Y
+  lda RIGHT_PADDLE_Y
   sta VDP_VRAM
-  lda #$f8
+  lda #RIGHT_PADDLE_X
   sta VDP_VRAM
   lda #2
   sta VDP_VRAM
@@ -201,7 +235,7 @@ delay:
   phx
   phy
   ldx #$ff
-  ldy #$8
+  ldy #$f
 delay_loop:
   dex
   bne delay_loop
@@ -324,7 +358,7 @@ vdp_end_patterns:
 
 
 vdp_sprite_patterns:
-  .byte $60,$f0,$f0,$60,$00,$00,$00,$00    ; ball 
+  .byte $c0,$c0,$00,$00,$00,$00,$00,$00    ; ball 
   .byte $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0    ; left paddle 
   .byte $03,$03,$03,$03,$03,$03,$03,$03    ; right paddle 
 vdp_end_sprite_patterns:
