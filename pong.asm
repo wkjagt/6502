@@ -26,14 +26,17 @@ BALL_VER_DIRECTION  = $35
 BALL_X              = $36
 BALL_Y              = $37
 
-BALL_Y_SPEED        = $38
-TEMP_PADDLE_Y       = $39
-LEFT_PADDLE_Y       = $40
-RIGHT_PADDLE_Y      = $41
+BALL_X_SPEED        = $38
+BALL_Y_SPEED        = $39
+TEMP_PADDLE_Y       = $3a
+LEFT_PADDLE_Y       = $3b
+RIGHT_PADDLE_Y      = $3c
 
+GAME_SPEED          = $3d
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
+INITIAL_GAME_SPEED  = $6      ; this is actually a delay, so a lower number is faster
 
 
   .org $0300
@@ -54,34 +57,41 @@ RIGHT_PADDLE_X      = $d8
   .endm
 
 reset:
-  lda #0
-  sta DDRA ; direction: read
-  lda #1
-  sta BALL_Y_SPEED
-  lda #0
-  sta BALL_VER_DIRECTION
-  sta BALL_HOR_DIRECTION
-  lda #$5f
-  sta BALL_Y
-  lda #$7f
-  sta BALL_X
-
+  jsr game_setup
   jsr vdp_setup
   cli
   jmp game_loop
 
+game_setup:
+  lda #0
+  sta DDRA ; direction: read
+  lda #1
+  sta BALL_Y_SPEED
+  lda #1
+  sta BALL_VER_DIRECTION
+  sta BALL_HOR_DIRECTION
+  lda #$2f
+  sta BALL_Y
+  lda #$7f
+  sta BALL_X
+  lda #INITIAL_GAME_SPEED
+  sta GAME_SPEED
+  rts
+
 game_loop:
-  jsr update_game
   jsr delay
+  jsr update_game
   jmp game_loop
 
 update_game:
+  sei
   jsr paddle_collision
   jsr side_wall_collision
   jsr floor_ceiling_collision
   jsr set_ball_pos
   jsr set_left_paddle_pos
   jsr set_right_paddle_pos
+  cli
   rts
 
 paddle_collision:
@@ -91,7 +101,7 @@ paddle_collision:
   ldx LEFT_PADDLE_Y
   jmp .continue
 .check_right_paddle
-  cmp #RIGHT_PADDLE_X + 6     ; paddle thickness again
+  cmp #RIGHT_PADDLE_X + 4     ; paddle thickness again
   bne .no_collision
   ldx RIGHT_PADDLE_Y
 .continue:
@@ -100,7 +110,7 @@ paddle_collision:
   sec
   sbc TEMP_PADDLE_Y
   bcc .no_collision; carry is clear: negative: done
-  cmp #$e
+  cmp #$f
   bcs .no_collision
   ; flip direction
   lda BALL_HOR_DIRECTION
@@ -162,18 +172,12 @@ incr_ball_y:
 set_left_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
-  ; lda BALL_Y
-  ; adc #1
   sta LEFT_PADDLE_Y
   rts
 
 set_right_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
-  ; lda BALL_Y
-  ; sec
-  ; sbc #$d
-
   sta RIGHT_PADDLE_Y
   rts
 
@@ -223,7 +227,7 @@ draw_right_paddle:
   sta VDP_VRAM
 
   lda RIGHT_PADDLE_Y         ; y coordinate for the sprite 
-  adc #7                    ; adding 7 because with 8 there's a gap sometimes....
+  adc #8                     ; no need to add 7 instead of 8 here. weird...
   sta VDP_VRAM
   lda #RIGHT_PADDLE_X        ; x coordinate for the sprite 
   sta VDP_VRAM
@@ -234,7 +238,6 @@ draw_right_paddle:
   rts
 
 irq:
-  sei
   pha
   phy
   phx
@@ -248,14 +251,13 @@ irq:
   plx
   ply
   pla
-  cli
   rts
 
 delay:
   phx
   phy
   ldx #$ff
-  ldy #$f
+  ldy GAME_SPEED
 delay_loop:
   dex
   bne delay_loop
