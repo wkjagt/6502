@@ -116,6 +116,7 @@ side_wall_collision:
   cmp #$fb
   bne .return
 .continue:
+  jsr blink_screen
   lda BALL_HOR_DIRECTION
   eor #1
   sta BALL_HOR_DIRECTION
@@ -369,6 +370,30 @@ vdp_enable_display:
   sta VDP_VRAM
   rts
 
+blink_screen:
+  ldx #$3
+.loop:
+  lda #$1f
+  sta VDP_REG
+  lda #$7 ; register 7
+  ora #VDP_REGISTER_BITS ; combine the register number with the second write pattern
+  sta VDP_REG
+  jsr blink_delay
+  lda #$f1
+  sta VDP_REG
+  lda #$7 ; register 7
+  ora #VDP_REGISTER_BITS ; combine the register number with the second write pattern
+  sta VDP_REG
+  jsr blink_delay
+  dex
+  bne .loop
+  rts
+
+blink_delay:
+  jsr delay
+  jsr delay
+  jsr delay
+  rts
 
 vdp_patterns:
   .byte $00,$00,$00,$00,$00,$00,$00,$00 ; empty, used to clear the screen
