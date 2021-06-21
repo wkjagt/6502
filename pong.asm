@@ -22,17 +22,16 @@ VDP_PATTERN_INIT_HI = $31
 VDP_SPRITE_INIT     = $32
 VDP_SPRITE_INIT_HI  = $33
 BALL_HOR_DIRECTION  = $34
-BALL_VER_DIRECTION  = $35
 BALL_X              = $36
 BALL_Y              = $37
 
-BALL_X_SPEED        = $38
 BALL_Y_SPEED        = $39
 TEMP_PADDLE_Y       = $3a
 LEFT_PADDLE_Y       = $3b
 RIGHT_PADDLE_Y      = $3c
 
 GAME_SPEED          = $3d
+TEMP                = $3e
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
@@ -65,10 +64,9 @@ reset:
 game_setup:
   lda #0
   sta DDRA ; direction: read
-  lda #2
+  lda #$1  ;  -1 (two's complement)
   sta BALL_Y_SPEED
   lda #1
-  sta BALL_VER_DIRECTION
   sta BALL_HOR_DIRECTION
   lda #$2f
   sta BALL_Y
@@ -119,7 +117,7 @@ paddle_collision:
 
 set_ver_ball_speed:
   ; at this point A contains where the ball hit the paddle between 0 and f
-  ; divide into 4 zones
+  ; divide into 4 zones by dividing by 4
   lsr
   lsr
   bne .test_bottom
@@ -167,9 +165,13 @@ verify_top_border:
   cmp #$ba
   bcc .done
 .flip_ball_ver_dir:
-  lda BALL_VER_DIRECTION
-  eor #1
-  sta BALL_VER_DIRECTION
+  ; calculate 2's complement to flip the direction
+  lda BALL_Y_SPEED
+  eor #$ff
+  tax
+  inx
+  clc
+  stx BALL_Y_SPEED
 .done
   rts
 
@@ -182,14 +184,6 @@ set_ball_pos_x:
 incr_ball_x:
   inc BALL_X
 set_ball_pos_y:
-  lda BALL_VER_DIRECTION
-  bne incr_ball_y
-  lda BALL_Y
-  sec
-  sbc BALL_Y_SPEED
-  sta BALL_Y
-  rts
-incr_ball_y:
   lda BALL_Y
   adc BALL_Y_SPEED
   sta BALL_Y
