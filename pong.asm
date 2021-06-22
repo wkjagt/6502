@@ -35,7 +35,7 @@ TEMP                = $3e
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
-INITIAL_GAME_SPEED  = $a      ; this is actually a delay, so a lower number is faster
+INITIAL_GAME_SPEED  = $f      ; this is actually a delay, so a lower number is faster
 
 
   .org $0300
@@ -103,36 +103,32 @@ paddle_collision:
   bne .no_collision
   ldx RIGHT_PADDLE_Y
 .continue:
+  dex
   stx TEMP_PADDLE_Y
   lda BALL_Y
   sec
   sbc TEMP_PADDLE_Y
   bcc .no_collision
-  cmp #$f
+  cmp #$11
   bcs .no_collision
   jsr flip_hor_direction
-  jsr set_ver_ball_speed
+  jsr set_ball_y_speed
 .no_collision
   rts
 
-set_ver_ball_speed:
+set_ball_y_speed:
   ; at this point A contains where the ball hit the paddle between 0 and f
   ; divide into 4 zones by dividing by 4
   lsr
   lsr
+
   bne .test_bottom
-  lda #2                  ; this means it's the top of the paddle
-  sta BALL_Y_SPEED
+  dec BALL_Y_SPEED
   jmp .done
 .test_bottom
   cmp #3
-  bne .center
-  lda #1                  ; this means it's the bottom of the paddle
-  sta BALL_Y_SPEED
-  jmp .done
-.center
-  lda #1
-  sta BALL_Y_SPEED
+  bne .done
+  inc BALL_Y_SPEED
 .done:
   rts
 
@@ -168,10 +164,9 @@ verify_top_border:
   ; calculate 2's complement to flip the direction
   lda BALL_Y_SPEED
   eor #$ff
-  tax
-  inx
+  ina
   clc
-  stx BALL_Y_SPEED
+  sta BALL_Y_SPEED
 .done
   rts
 
@@ -192,12 +187,18 @@ set_ball_pos_y:
 set_left_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
+  ; lda BALL_Y
+  ; sec
+  ; sbc #$f
   sta LEFT_PADDLE_Y
   rts
 
 set_right_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
+  ; lda BALL_Y
+  ; sec
+  ; sbc #$f
   sta RIGHT_PADDLE_Y
   rts
 
