@@ -32,10 +32,14 @@ RIGHT_PADDLE_Y      = $3c
 
 GAME_SPEED          = $3d
 TEMP                = $3e
+
+SCORE_PLAYER_1      = $3f
+SCORE_PLAYER_2      = $40
+
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
-INITIAL_GAME_SPEED  = $f      ; this is actually a delay, so a lower number is faster
+INITIAL_GAME_SPEED  = $a      ; this is actually a delay, so a lower number is faster
 
 
   .org $0300
@@ -74,6 +78,9 @@ game_setup:
   sta BALL_X
   lda #INITIAL_GAME_SPEED
   sta GAME_SPEED
+  lda #0
+  sta SCORE_PLAYER_1
+  sta SCORE_PLAYER_2
   rts
 
 game_loop:
@@ -108,7 +115,7 @@ paddle_collision:
   lda BALL_Y
   sec
   sbc TEMP_PADDLE_Y
-  bcc .no_collision
+  bcc .no_collision           ; carry clear means negative, so ball went over the paddle
   cmp #$11
   bcs .no_collision
   jsr flip_hor_direction
@@ -117,21 +124,14 @@ paddle_collision:
   rts
 
 set_ball_y_speed:
-  ; at this point A contains where the ball hit the paddle between 0 and f
-  ; divide into 4 zones by dividing by 4
-  lsr
-  lsr
-
-  bne .test_bottom
-  dec BALL_Y_SPEED
-  jmp .done
-.test_bottom
-  cmp #3
-  bne .done
-  inc BALL_Y_SPEED
-.done:
+  ; at this point A contains where the ball hit the paddle between 0 and 10
+  tax
+  lda ball_speed_deltas, x
+  sta TEMP
+  lda BALL_Y_SPEED
+  adc TEMP
+  sta BALL_Y_SPEED
   rts
-
 
 flip_hor_direction:
   pha
@@ -144,13 +144,18 @@ flip_hor_direction:
 side_wall_collision:
   lda BALL_X
   cmp #$04
-  beq .continue
+  beq .player_two_scores
   cmp #$fb
-  bne .return
-.continue:
+  beq .player_one_scores
+  rts
+.player_one_scores:
+  inc SCORE_PLAYER_1
+  jmp .scored
+.player_two_scores:
+  inc SCORE_PLAYER_2
+.scored:
   jsr blink_screen
   jsr flip_hor_direction
-.return:
   rts
 
 floor_ceiling_collision:
@@ -187,18 +192,12 @@ set_ball_pos_y:
 set_left_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
-  ; lda BALL_Y
-  ; sec
-  ; sbc #$f
   sta LEFT_PADDLE_Y
   rts
 
 set_right_paddle_pos:
   ldx PORTA  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
-  ; lda BALL_Y
-  ; sec
-  ; sbc #$f
   sta RIGHT_PADDLE_Y
   rts
 
@@ -268,6 +267,8 @@ irq:
   jsr draw_ball
   jsr draw_left_paddle
   jsr draw_right_paddle
+  jsr draw_score_player_1
+  jsr draw_score_player_2
 .done
   plx
   ply
@@ -297,6 +298,8 @@ vdp_setup:
 
   jsr initialize_sprites
   jsr draw_dotted_line
+  jsr draw_score_player_1
+  jsr draw_score_player_2
   jsr vdp_enable_display
   rts
 
@@ -320,6 +323,23 @@ draw_dotted_line:
 .row_done:
   dey
   bne .draw_row
+  rts
+
+; load score from x
+draw_score_player_1:
+  ldx SCORE_PLAYER_1
+  inx      ; score characters start at offset 2
+  inx
+  vdp_write_vram (VDP_NAME_TABLE_BASE + $e)
+  stx VDP_VRAM
+  rts
+
+draw_score_player_2:
+  ldx SCORE_PLAYER_2
+  inx      ; score characters start at offset 2
+  inx
+  vdp_write_vram (VDP_NAME_TABLE_BASE + $11)
+  stx VDP_VRAM
   rts
 
 vdp_initialize_pattern_table:
@@ -421,8 +441,17 @@ blink_delay:
 vdp_patterns:
   .byte $00,$00,$00,$00,$00,$00,$00,$00 ; empty, used to clear the screen
   .byte $80,$80,$00,$00,$80,$80,$00,$00 ; dotted line
+  .byte $70,$88,$98,$A8,$C8,$88,$70,$00 ; 0
+  .byte $20,$60,$20,$20,$20,$20,$70,$00 ; 1
+  .byte $70,$88,$08,$30,$40,$80,$F8,$00 ; 2
+  .byte $F8,$08,$10,$30,$08,$88,$70,$00 ; 3
+  .byte $10,$30,$50,$90,$F8,$10,$10,$00 ; 4
+  .byte $F8,$80,$F0,$08,$08,$88,$70,$00 ; 5
+  .byte $38,$40,$80,$F0,$88,$88,$70,$00 ; 6
+  .byte $F8,$08,$10,$20,$40,$40,$40,$00 ; 7
+  .byte $70,$88,$88,$70,$88,$88,$70,$00 ; 8
+  .byte $70,$88,$88,$78,$08,$10,$E0,$00 ; 9
 vdp_end_patterns:
-
 
 vdp_sprite_patterns:
   .byte $c0,$c0,$00,$00,$00,$00,$00,$00    ; ball 
@@ -433,37 +462,57 @@ vdp_sprite_patterns:
 vdp_end_sprite_patterns:
 
 ; to regenerate in irb:
-; (0..255).each_slice(8) {|slice| puts " .byte " + slice.map{|int| "$#{((255-int)*175/256).to_s(16).rjust(2, '0')}"}.join(",")}
+; (0..255).each_slice(8) {|slice| puts "  .byte " + slice.map{|int| "$#{((255-int)*175/256).to_s(16).rjust(2, '0')}"}.join(",")}
 controller_input_to_y_pos:
- .byte $ae,$ad,$ac,$ac,$ab,$aa,$aa,$a9
- .byte $a8,$a8,$a7,$a6,$a6,$a5,$a4,$a4
- .byte $a3,$a2,$a2,$a1,$a0,$9f,$9f,$9e
- .byte $9d,$9d,$9c,$9b,$9b,$9a,$99,$99
- .byte $98,$97,$97,$96,$95,$95,$94,$93
- .byte $92,$92,$91,$90,$90,$8f,$8e,$8e
- .byte $8d,$8c,$8c,$8b,$8a,$8a,$89,$88
- .byte $88,$87,$86,$85,$85,$84,$83,$83
- .byte $82,$81,$81,$80,$7f,$7f,$7e,$7d
- .byte $7d,$7c,$7b,$7b,$7a,$79,$78,$78
- .byte $77,$76,$76,$75,$74,$74,$73,$72
- .byte $72,$71,$70,$70,$6f,$6e,$6e,$6d
- .byte $6c,$6c,$6b,$6a,$69,$69,$68,$67
- .byte $67,$66,$65,$65,$64,$63,$63,$62
- .byte $61,$61,$60,$5f,$5f,$5e,$5d,$5c
- .byte $5c,$5b,$5a,$5a,$59,$58,$58,$57
- .byte $56,$56,$55,$54,$54,$53,$52,$52
- .byte $51,$50,$4f,$4f,$4e,$4d,$4d,$4c
- .byte $4b,$4b,$4a,$49,$49,$48,$47,$47
- .byte $46,$45,$45,$44,$43,$42,$42,$41
- .byte $40,$40,$3f,$3e,$3e,$3d,$3c,$3c
- .byte $3b,$3a,$3a,$39,$38,$38,$37,$36
- .byte $36,$35,$34,$33,$33,$32,$31,$31
- .byte $30,$2f,$2f,$2e,$2d,$2d,$2c,$2b
- .byte $2b,$2a,$29,$29,$28,$27,$26,$26
- .byte $25,$24,$24,$23,$22,$22,$21,$20
- .byte $20,$1f,$1e,$1e,$1d,$1c,$1c,$1b
- .byte $1a,$19,$19,$18,$17,$17,$16,$15
- .byte $15,$14,$13,$13,$12,$11,$11,$10
- .byte $0f,$0f,$0e,$0d,$0c,$0c,$0b,$0a
- .byte $0a,$09,$08,$08,$07,$06,$06,$05
- .byte $04,$04,$03,$02,$02,$01,$00,$00
+  .byte $ae,$ad,$ac,$ac,$ab,$aa,$aa,$a9
+  .byte $a8,$a8,$a7,$a6,$a6,$a5,$a4,$a4
+  .byte $a3,$a2,$a2,$a1,$a0,$9f,$9f,$9e
+  .byte $9d,$9d,$9c,$9b,$9b,$9a,$99,$99
+  .byte $98,$97,$97,$96,$95,$95,$94,$93
+  .byte $92,$92,$91,$90,$90,$8f,$8e,$8e
+  .byte $8d,$8c,$8c,$8b,$8a,$8a,$89,$88
+  .byte $88,$87,$86,$85,$85,$84,$83,$83
+  .byte $82,$81,$81,$80,$7f,$7f,$7e,$7d
+  .byte $7d,$7c,$7b,$7b,$7a,$79,$78,$78
+  .byte $77,$76,$76,$75,$74,$74,$73,$72
+  .byte $72,$71,$70,$70,$6f,$6e,$6e,$6d
+  .byte $6c,$6c,$6b,$6a,$69,$69,$68,$67
+  .byte $67,$66,$65,$65,$64,$63,$63,$62
+  .byte $61,$61,$60,$5f,$5f,$5e,$5d,$5c
+  .byte $5c,$5b,$5a,$5a,$59,$58,$58,$57
+  .byte $56,$56,$55,$54,$54,$53,$52,$52
+  .byte $51,$50,$4f,$4f,$4e,$4d,$4d,$4c
+  .byte $4b,$4b,$4a,$49,$49,$48,$47,$47
+  .byte $46,$45,$45,$44,$43,$42,$42,$41
+  .byte $40,$40,$3f,$3e,$3e,$3d,$3c,$3c
+  .byte $3b,$3a,$3a,$39,$38,$38,$37,$36
+  .byte $36,$35,$34,$33,$33,$32,$31,$31
+  .byte $30,$2f,$2f,$2e,$2d,$2d,$2c,$2b
+  .byte $2b,$2a,$29,$29,$28,$27,$26,$26
+  .byte $25,$24,$24,$23,$22,$22,$21,$20
+  .byte $20,$1f,$1e,$1e,$1d,$1c,$1c,$1b
+  .byte $1a,$19,$19,$18,$17,$17,$16,$15
+  .byte $15,$14,$13,$13,$12,$11,$11,$10
+  .byte $0f,$0f,$0e,$0d,$0c,$0c,$0b,$0a
+  .byte $0a,$09,$08,$08,$07,$06,$06,$05
+  .byte $04,$04,$03,$02,$02,$01,$00,$00
+
+
+ball_speed_deltas:
+  .byte $fe ; paddle hit at 0 (far top)
+  .byte $fe ; paddle hit at 1 (far top)
+  .byte $ff ; paddle hit at 2 (top)
+  .byte $ff ; paddle hit at 3 (top)
+  .byte $ff ; paddle hit at 4 (top)
+  .byte $ff ; paddle hit at 5 (top)
+  .byte $00 ; paddle hit at 5 (center)
+  .byte $00 ; paddle hit at 7 (center)
+  .byte $00 ; paddle hit at 8 (exact center)
+  .byte $00 ; paddle hit at 9 (center)
+  .byte $00 ; paddle hit at a (center)
+  .byte $01 ; paddle hit at b (bottom)
+  .byte $01 ; paddle hit at c (bottom)
+  .byte $01 ; paddle hit at d (bottom)
+  .byte $01 ; paddle hit at e (bottom)
+  .byte $01 ; paddle hit at f (far bottom)
+  .byte $01 ; paddle hit at 10 (far bottom)
