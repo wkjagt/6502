@@ -60,15 +60,15 @@ INITIAL_GAME_SPEED  = $a      ; this is actually a delay, so a lower number is f
   .endm
 
 reset:
-  jsr game_setup
+  jsr reset_game
   jsr vdp_setup
   cli
   jmp game_loop
 
-game_setup:
+reset_game:
   lda #0
   sta DDRA ; direction: read
-  lda #$1  ;  -1 (two's complement)
+  lda #$1
   sta BALL_Y_SPEED
   lda #1
   sta BALL_HOR_DIRECTION
@@ -86,7 +86,25 @@ game_setup:
 game_loop:
   jsr delay
   jsr update_game
+  jsr winner
   jmp game_loop
+
+winner:
+  lda SCORE_PLAYER_1
+  cmp #9
+  beq .winner
+  lda SCORE_PLAYER_2
+  cmp #9
+  beq .winner
+  rts
+.winner:
+  ldx #5
+.winner_loop:
+  jsr blink_screen
+  dex
+  bne .winner_loop
+  jsr reset_game
+  rts
 
 update_game:
   sei
@@ -327,18 +345,18 @@ draw_dotted_line:
 
 ; load score from x
 draw_score_player_1:
+  vdp_write_vram (VDP_NAME_TABLE_BASE + $e)
   ldx SCORE_PLAYER_1
   inx      ; score characters start at offset 2
   inx
-  vdp_write_vram (VDP_NAME_TABLE_BASE + $e)
   stx VDP_VRAM
   rts
 
 draw_score_player_2:
+  vdp_write_vram (VDP_NAME_TABLE_BASE + $11)
   ldx SCORE_PLAYER_2
   inx      ; score characters start at offset 2
   inx
-  vdp_write_vram (VDP_NAME_TABLE_BASE + $11)
   stx VDP_VRAM
   rts
 
@@ -414,6 +432,7 @@ vdp_enable_display:
   rts
 
 blink_screen:
+  phx
   ldx #$3
 .loop:
   lda #$1f
@@ -430,6 +449,7 @@ blink_screen:
   jsr blink_delay
   dex
   bne .loop
+  plx
   rts
 
 blink_delay:
