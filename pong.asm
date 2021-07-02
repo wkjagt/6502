@@ -148,6 +148,18 @@ set_ball_y_speed:
   sta TEMP
   lda BALL_Y_SPEED
   adc TEMP
+  cmp #2
+  bpl .set_max_speed_down
+  cmp #$fe
+  bmi .set_max_speed_up
+  jmp .done
+
+.set_max_speed_up:
+  lda #$fe
+  jmp .done
+.set_max_speed_down:
+  lda #2
+.done:
   sta BALL_Y_SPEED
   rts
 
@@ -534,5 +546,5 @@ ball_speed_deltas:
   .byte $01 ; paddle hit at c (bottom)
   .byte $01 ; paddle hit at d (bottom)
   .byte $01 ; paddle hit at e (bottom)
-  .byte $01 ; paddle hit at f (far bottom)
-  .byte $01 ; paddle hit at 10 (far bottom)
+  .byte $02 ; paddle hit at f (far bottom)
+  .byte $02 ; paddle hit at 10 (far bottom)
