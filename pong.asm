@@ -36,6 +36,9 @@ TEMP                = $3e
 SCORE_PLAYER_1      = $3f
 SCORE_PLAYER_2      = $40
 
+CONTROLLER_INPUT_RAW = $41
+CONTROLLER_INPUT_DEBOUNCED = $42
+
 ; constants
 LEFT_PADDLE_X       = $20
 RIGHT_PADDLE_X      = $d8
@@ -112,6 +115,7 @@ update_game:
   jsr side_wall_collision
   jsr floor_ceiling_collision
   jsr set_ball_pos
+  jsr read_controller_input
   jsr set_left_paddle_pos
   jsr set_right_paddle_pos
   cli
@@ -219,14 +223,28 @@ set_ball_pos_y:
   sta BALL_Y
   rts
 
+read_controller_input:
+  lda PORTA
+  sta CONTROLLER_INPUT_RAW
+  sbc CONTROLLER_INPUT_DEBOUNCED
+  cmp #2
+  bpl .store_new
+  cmp #$fe    ; -2
+  bmi .store_new
+  rts
+.store_new
+  lda CONTROLLER_INPUT_RAW
+  sta CONTROLLER_INPUT_DEBOUNCED
+  rts
+
 set_left_paddle_pos:
-  ldx PORTA  ; this returns a value between 0 and 255
+  ldx CONTROLLER_INPUT_DEBOUNCED  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
   sta LEFT_PADDLE_Y
   rts
 
 set_right_paddle_pos:
-  ldx PORTA  ; this returns a value between 0 and 255
+  ldx CONTROLLER_INPUT_DEBOUNCED  ; this returns a value between 0 and 255
   lda controller_input_to_y_pos, x
   sta RIGHT_PADDLE_Y
   rts
