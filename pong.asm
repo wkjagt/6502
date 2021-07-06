@@ -1,49 +1,49 @@
-; TMS9918A
-VDP_VRAM               = $8000
-VDP_REG                = $8001
-VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
-VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
-
-VIA_START = $6000
-PORTA = VIA_START + 1
-PORTB = VIA_START + 0
-DDRA  = VIA_START + 3
-DDRB  = VIA_START + 2
-
-
+; Video - TMS9918A
+VDP_VRAM                       = $8000
+VDP_REG                        = $8001
+VDP_WRITE_VRAM_BIT             = %01000000  ; pattern of second vram address write: 01AAAAAA
+VDP_REGISTER_BITS              = %10000000  ; pattern of second register write: 10000RRR
 VDP_NAME_TABLE_BASE            = $0400
 VDP_PATTERN_TABLE_BASE         = $0800
 VDP_COLOR_TABLE_BASE           = $0200
 VDP_SPRITE_PATTERNS_TABLE_BASE = $0000
 VDP_SPRITE_ATTR_TABLE_BASE     = $0100
 
-VDP_PATTERN_INIT    = $30
-VDP_PATTERN_INIT_HI = $31
-VDP_SPRITE_INIT     = $32
-VDP_SPRITE_INIT_HI  = $33
-BALL_HOR_DIRECTION  = $34
-BALL_X              = $36
-BALL_Y              = $37
+; io
+VIA_START = $6000
+PORTA    = VIA_START + 1
+PORTB    = VIA_START + 0
+DDRA     = VIA_START + 3
+DDRB     = VIA_START + 2
 
-BALL_Y_SPEED        = $39
-TEMP_PADDLE_Y       = $3a
-LEFT_PADDLE_Y       = $3b
-RIGHT_PADDLE_Y      = $3c
-
-GAME_SPEED          = $3d
-TEMP                = $3e
-
-SCORE_PLAYER_1      = $3f
-SCORE_PLAYER_2      = $40
-
-CONTROLLER_INPUT_RAW = $41
+; zero page addresses
+VDP_PATTERN_INIT           = $30
+VDP_PATTERN_INIT_HI        = $31
+VDP_SPRITE_INIT            = $32
+VDP_SPRITE_INIT_HI         = $33
+BALL_HOR_DIRECTION         = $34
+BALL_X                     = $36
+BALL_Y                     = $37
+BALL_Y_SPEED               = $39
+TEMP_PADDLE_Y              = $3a
+LEFT_PADDLE_Y              = $3b
+RIGHT_PADDLE_Y             = $3c
+GAME_SPEED                 = $3d
+TEMP                       = $3e
+SCORE_PLAYER_1             = $3f
+SCORE_PLAYER_2             = $40
+CONTROLLER_INPUT_RAW       = $41
 CONTROLLER_INPUT_DEBOUNCED = $42
 
-; constants
-LEFT_PADDLE_X       = $20
-RIGHT_PADDLE_X      = $d8
-INITIAL_GAME_SPEED  = $a      ; this is actually a delay, so a lower number is faster
-
+; Game constants
+INITIAL_BALL_HOR_DIRECTION = $1
+INITIAL_BALL_Y_SPEED       = $ff
+INITIAL_BALL_Y             = $2f
+INITIAL_BALL_X             = $af
+LEFT_PADDLE_X              = $20
+RIGHT_PADDLE_X             = $d8
+SCORE_TO_WIN               = $9
+INITIAL_GAME_SPEED         = $f      ; this is actually a delay, so a lower number is faster
 
   .org $0300
   
@@ -71,13 +71,13 @@ reset:
 reset_game:
   lda #0
   sta DDRA ; direction: read
-  lda #$1
+  lda #INITIAL_BALL_Y_SPEED
   sta BALL_Y_SPEED
-  lda #1
+  lda #INITIAL_BALL_HOR_DIRECTION
   sta BALL_HOR_DIRECTION
-  lda #$2f
+  lda #INITIAL_BALL_Y
   sta BALL_Y
-  lda #$7f
+  lda #INITIAL_BALL_X
   sta BALL_X
   lda #INITIAL_GAME_SPEED
   sta GAME_SPEED
@@ -89,15 +89,15 @@ reset_game:
 game_loop:
   jsr delay
   jsr update_game
-  jsr winner
+  jsr check_for_winner
   jmp game_loop
 
-winner:
+check_for_winner:
   lda SCORE_PLAYER_1
-  cmp #9
+  cmp #SCORE_TO_WIN
   beq .winner
   lda SCORE_PLAYER_2
-  cmp #9
+  cmp #SCORE_TO_WIN
   beq .winner
   rts
 .winner:
@@ -135,11 +135,10 @@ paddle_collision:
   dex
   stx TEMP_PADDLE_Y
   lda BALL_Y
-  sec
   sbc TEMP_PADDLE_Y
-  bcc .no_collision           ; carry clear means negative, so ball went over the paddle
+  bmi .no_collision           ; carry clear means negative, so ball went over the paddle
   cmp #$11
-  bcs .no_collision
+  bpl .no_collision
   jsr flip_hor_direction
   jsr set_ball_y_speed
 .no_collision
@@ -157,7 +156,6 @@ set_ball_y_speed:
   cmp #$fe
   bmi .set_max_speed_up
   jmp .done
-
 .set_max_speed_up:
   lda #$fe
   jmp .done
@@ -227,9 +225,9 @@ read_controller_input:
   lda PORTA
   sta CONTROLLER_INPUT_RAW
   sbc CONTROLLER_INPUT_DEBOUNCED
-  cmp #2
+  cmp #3
   bpl .store_new
-  cmp #$fe    ; -2
+  cmp #$fd    ; -2
   bmi .store_new
   rts
 .store_new
