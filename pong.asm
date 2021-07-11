@@ -38,6 +38,8 @@ CONTROLLER_INPUT_DEBOUNCED = $42
 ; Game constants
 INITIAL_BALL_HOR_DIRECTION = $1
 INITIAL_BALL_Y_SPEED       = $ff
+MIN_BALL_Y_SPEED           = $fe ; -2
+MAX_BALL_Y_SPEED           = $2
 INITIAL_BALL_Y             = $2f
 INITIAL_BALL_X             = $af
 LEFT_PADDLE_X              = $20
@@ -45,12 +47,19 @@ RIGHT_PADDLE_X             = $d8
 SCORE_TO_WIN               = $9
 INITIAL_GAME_SPEED         = $f      ; this is actually a delay, so a lower number is faster
 
+  ; the program is loaded by the bootloader into RAM starting at address $0300.
+  ; The first 8 bytes are reserved for the irq vector. This needs to be like this
+  ; because the 6502 always has the IRQ vector set to $fffe, which is in ROM in our case.
+  ; The bootloader has an IRQ handler that just does jsr $0300. Since we only have 8 bytes,
+  ; this here calls a different subroutine.
   .org $0300
   
   system_irq:
     jsr irq
     rts
 
+; The program starts executing at $0308. After the bootloader has loaded the program into
+; RAM, it jumps to this address. In this case this is the reset label below.
   .org $0308
 
   .macro vdp_write_vram
@@ -70,7 +79,7 @@ reset:
 
 reset_game:
   lda #0
-  sta DDRA ; direction: read
+  sta DDRA                             ; direction: read
   lda #INITIAL_BALL_Y_SPEED
   sta BALL_Y_SPEED
   lda #INITIAL_BALL_HOR_DIRECTION
@@ -87,7 +96,7 @@ reset_game:
   rts
 
 game_loop:
-  jsr delay
+  jsr delay                            ; the delay determines the speed of the game
   jsr update_game
   jsr check_for_winner
   jmp game_loop
@@ -128,7 +137,8 @@ paddle_collision:
   ldx LEFT_PADDLE_Y
   jmp .continue
 .check_right_paddle
-  cmp #RIGHT_PADDLE_X + 4     ; paddle thickness again
+  cmp #RIGHT_PADDLE_X + 4     ; paddle thickness again, but this time measuring from
+                              ; the left of the paddle to the right of the ball
   bne .no_collision
   ldx RIGHT_PADDLE_Y
 .continue:
@@ -136,7 +146,7 @@ paddle_collision:
   stx TEMP_PADDLE_Y
   lda BALL_Y
   sbc TEMP_PADDLE_Y
-  bmi .no_collision           ; carry clear means negative, so ball went over the paddle
+  bmi .no_collision
   cmp #$11
   bpl .no_collision
   jsr flip_hor_direction
@@ -145,22 +155,22 @@ paddle_collision:
   rts
 
 set_ball_y_speed:
-  ; at this point A contains where the ball hit the paddle between 0 and 10
+  ; A contains where the ball hit the paddle between 0 and 11
   tax
   lda ball_speed_deltas, x
   sta TEMP
   lda BALL_Y_SPEED
   adc TEMP
-  cmp #2
+  cmp #MAX_BALL_Y_SPEED
   bpl .set_max_speed_down
-  cmp #$fe
+  cmp #$MIN_BALL_Y_SPEED
   bmi .set_max_speed_up
   jmp .done
 .set_max_speed_up:
-  lda #$fe
+  lda #MIN_BALL_Y_SPEED
   jmp .done
 .set_max_speed_down:
-  lda #2
+  lda #MAX_BALL_Y_SPEED
 .done:
   sta BALL_Y_SPEED
   rts
@@ -175,9 +185,9 @@ flip_hor_direction:
 
 side_wall_collision:
   lda BALL_X
-  cmp #$04
+  cmp #$04                             ; the left visible edge of the screen
   beq .player_two_scores
-  cmp #$fb
+  cmp #$fb                             ; the right visible edge of the screen
   beq .player_one_scores
   rts
 .player_one_scores:
@@ -193,9 +203,9 @@ side_wall_collision:
 floor_ceiling_collision:
 verify_top_border:
   lda BALL_Y
-  cmp #$01
+  cmp #$01                             ; the top visible edge of the screen
   bcc .flip_ball_ver_dir
-  cmp #$ba
+  cmp #$ba                             ; the bottom visible edge of the screen
   bcc .done
 .flip_ball_ver_dir:
   ; calculate 2's complement to flip the direction
@@ -227,7 +237,7 @@ read_controller_input:
   sbc CONTROLLER_INPUT_DEBOUNCED
   cmp #3
   bpl .store_new
-  cmp #$fd    ; -2
+  cmp #$fd    ; -3
   bmi .store_new
   rts
 .store_new
