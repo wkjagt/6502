@@ -163,7 +163,7 @@ set_ball_y_speed:
   adc TEMP
   cmp #MAX_BALL_Y_SPEED
   bpl .set_max_speed_down
-  cmp #$MIN_BALL_Y_SPEED
+  cmp #MIN_BALL_Y_SPEED
   bmi .set_max_speed_up
   jmp .done
 .set_max_speed_up:
@@ -460,13 +460,10 @@ initialize_sprites:
   rts
 
 vdp_enable_display:
-  pha
-  lda #%11100000
+  lda #%11100000                         ; 16k Bl IE M1 M2 0 Siz MAG 
   sta VDP_REG
-  lda #(VDP_REGISTER_BITS | 1)
+  lda #(VDP_REGISTER_BITS | 1)           ; register select (selecting register 1)
   sta VDP_REG
-  pla
-  sta VDP_VRAM
   rts
 
 blink_screen:

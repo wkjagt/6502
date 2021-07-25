@@ -6,5 +6,4 @@ upload_rom:
 
 load:
 	vasm6502_oldstyle -Fbin -dotdir -c02 $(program).asm -o $(program).rom
-	ROM=$(program).rom python upload_script/upload_program.py
-	rm $(program).rom
+	ROM=$(program).rom python3 upload_script/upload_program.py

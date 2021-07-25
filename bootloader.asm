@@ -55,7 +55,7 @@ setup_vdp:          jsr vdp_setup
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
-                    lda #$00                     ; ready light on
+                    lda #$00                     ; ready light off
                     sta PORTB                    
                     jsr load_program
                     lda #$ff                     ; ready light on
