@@ -26,7 +26,7 @@ VDP_PATTERN_INIT_HI = $31
 keyb_wptr           = $32
 keyb_rptr           = $33
 keyb_flags          = $34
-keyb_buffer         = $0200
+keyb_buffer         = $0200 ; one page for keyboard buffer
 
 KEYB_RELEASE        = %00000001
 KEYB_SHIFT          = %00000010
@@ -37,7 +37,8 @@ KEYB_RIGHT_SHIFT_CODE = $59
 KEYB_BACKSPACE_CODE   = $66
 
 ; screen
-screen_wptr         = $35
+screen_wptr_h          = $35
+screen_wptr_l          = $36
 
     .org $0300
   
@@ -62,12 +63,33 @@ reset:
     lda #0
     sta keyb_rptr
     sta keyb_wptr
-    sta screen_wptr
     sta keyb_flags
+    lda #80
+    sta screen_wptr_h
     cli
 
 program_loop:
+    jsr keypress_handler
     jmp program_loop
+
+keypress_handler:
+    lda keyb_rptr
+    cmp keyb_wptr
+    bne .keys_in_buffer
+    rts
+.keys_in_buffer:
+    sei
+    ldx keyb_rptr
+    lda keyb_buffer, x
+    ldx screen_wptr_h
+    sta screenbuffer, x
+    inc keyb_rptr
+    inc screen_wptr_h
+    inx
+    lda #"_"                       ; cursor
+    sta screenbuffer, x
+    cli
+    rts
 
 io_setup:
     lda #0                         ; set port A as input (for keyboard)
@@ -151,7 +173,6 @@ keyboard_interrupt:
     sta keyb_flags
     jmp .done
 .backspace:
-    
 .done
     rts
 
@@ -160,22 +181,19 @@ keyboard_interrupt:
 ; ====================================================================================
 
 vdp_interrupt:
-    lda keyb_rptr
-    cmp keyb_wptr
-    bne .keys_in_buffer
-    rts
-.keys_in_buffer:
-    lda #<(VDP_NAME_TABLE_BASE)
-    adc screen_wptr
-    sta VDP_REG
-    lda #(VDP_WRITE_VRAM_BIT | >VDP_NAME_TABLE_BASE)
-    sta VDP_REG
-    inc screen_wptr
+    pha
+    phx
 
-    ldx keyb_rptr
-    lda keyb_buffer, x
+    vdp_write_vram VDP_NAME_TABLE_BASE
+    ldx #0
+.screenbuffer_loop:
+    lda screenbuffer, x
     sta VDP_VRAM
-    inc keyb_rptr
+    inx
+    bne .screenbuffer_loop
+.done
+    plx
+    pla
     rts
 
 vdp_setup:
@@ -212,7 +230,7 @@ vdp_pattern_table_loop:
     rts
 
 vdp_enable_display:
-    lda #$c0                               ; 16k Bl IE M1 M2 0 Siz MAG 
+    lda #$21                               ; fg / bg colours
     sta VDP_REG
     lda #(VDP_REGISTER_BITS | 7)           ; register select (selecting register 1)
     sta VDP_REG
@@ -393,7 +411,10 @@ keymap_shifted:
   .byte "????????????????" ; E0-EF
   .byte "????????????????" ; F0-FF
 
-screenbuffer:
+screenbuffer: ; a buffer of ascii codes to print to the screen
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"-",0,"6","5","0","2",0,"O","S",0,"-",0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    .byte "_",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
@@ -414,8 +435,4 @@ screenbuffer:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-endscreenbuffer
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"!"
