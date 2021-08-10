@@ -37,8 +37,13 @@ KEYB_RIGHT_SHIFT_CODE = $59
 KEYB_BACKSPACE_CODE   = $66
 
 ; screen
-screen_wptr_h          = $35
-screen_wptr_l          = $36
+
+; 16 bit pointer to where the next character is written to the screen buffer
+screen_buffer_wptr_l = $35
+screen_buffer_wptr_h = $36
+; 16 bit pointer used for looping over the screen buffer and writing to VDP
+screen_buffer_rptr_l = $37
+screen_buffer_rptr_h = $38
 
     .org $0300
   
@@ -64,9 +69,20 @@ reset:
     sta keyb_rptr
     sta keyb_wptr
     sta keyb_flags
-    lda #80
-    sta screen_wptr_h
+    lda #(>screenbuffer)
+    sta screen_buffer_wptr_h
+    lda #(<screenbuffer + 80) ; + to start on the 3rd line (40 chars per line)
+    sta screen_buffer_wptr_l
+    jsr reset_screen_buffer_rptr
     cli
+    jmp program_loop
+
+reset_screen_buffer_rptr:
+    lda #(>screenbuffer)
+    sta screen_buffer_rptr_h
+    lda #(<screenbuffer)
+    sta screen_buffer_rptr_l
+    rts
 
 program_loop:
     jsr keypress_handler
@@ -76,18 +92,18 @@ keypress_handler:
     lda keyb_rptr
     cmp keyb_wptr
     bne .keys_in_buffer
+
     rts
 .keys_in_buffer:
     sei
     ldx keyb_rptr
     lda keyb_buffer, x
-    ldx screen_wptr_h
-    sta screenbuffer, x
     inc keyb_rptr
-    inc screen_wptr_h
-    inx
-    lda #"_"                       ; cursor
-    sta screenbuffer, x
+    sta (screen_buffer_wptr_l)
+    inc screen_buffer_wptr_l
+    bne .done
+    inc screen_buffer_wptr_h
+.done:
     cli
     rts
 
@@ -183,14 +199,23 @@ keyboard_interrupt:
 vdp_interrupt:
     pha
     phx
+    jsr reset_screen_buffer_rptr
 
     vdp_write_vram VDP_NAME_TABLE_BASE
-    ldx #0
 .screenbuffer_loop:
-    lda screenbuffer, x
+    lda screen_buffer_rptr_l
+    cmp #(<end_screenbuffer)
+    bne .continue
+    lda screen_buffer_rptr_h
+    cmp #(>end_screenbuffer)
+    beq .done
+.continue:
+    lda (screen_buffer_rptr_l)
     sta VDP_VRAM
-    inx
+    inc screen_buffer_rptr_l
     bne .screenbuffer_loop
+    inc screen_buffer_rptr_h
+    jmp .screenbuffer_loop
 .done
     plx
     pla
@@ -412,27 +437,28 @@ keymap_shifted:
   .byte "????????????????" ; F0-FF
 
 screenbuffer: ; a buffer of ascii codes to print to the screen
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"-",0,"6","5","0","2",0,"O","S",0,"-",0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte "_",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"!"
+    .byte "              - 6502 OS -               "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+    .byte "                                        "
+end_screenbuffer
