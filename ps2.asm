@@ -18,6 +18,16 @@ VIA_PCR       = $600c ; peripheral control register
 VIA_IFR       = $600d ; interrupt flag register
 VIA_IER       = $600e ; interrupt enable register
 
+KEYB_RELEASE        = %00000001
+KEYB_SHIFT          = %00000010
+
+KEYB_RELEASE_CODE     = $F0
+KEYB_LEFT_SHIFT_CODE  = $12
+KEYB_RIGHT_SHIFT_CODE = $59
+KEYB_BACKSPACE_CODE   = $66
+
+END_OF_SCREEN_BUFFER = $ff
+
 ; zero page addresses
 VDP_PATTERN_INIT    = $30
 VDP_PATTERN_INIT_HI = $31
@@ -28,22 +38,13 @@ keyb_rptr           = $33
 keyb_flags          = $34
 keyb_buffer         = $0200 ; one page for keyboard buffer
 
-KEYB_RELEASE        = %00000001
-KEYB_SHIFT          = %00000010
-
-KEYB_RELEASE_CODE     = $F0
-KEYB_LEFT_SHIFT_CODE  = $12
-KEYB_RIGHT_SHIFT_CODE = $59
-KEYB_BACKSPACE_CODE   = $66
-
-; screen
-
 ; 16 bit pointer to where the next character is written to the screen buffer
 screen_buffer_wptr_l = $35
 screen_buffer_wptr_h = $36
 ; 16 bit pointer used for looping over the screen buffer and writing to VDP
 screen_buffer_rptr_l = $37
 screen_buffer_rptr_h = $38
+flags                = $39
 
     .org $0300
   
@@ -69,6 +70,7 @@ reset:
     sta keyb_rptr
     sta keyb_wptr
     sta keyb_flags
+    sta flags
     lda #(>screenbuffer)
     sta screen_buffer_wptr_h
     lda #(<screenbuffer + 80) ; + to start on the 3rd line (40 chars per line)
@@ -86,13 +88,25 @@ reset_screen_buffer_rptr:
 
 program_loop:
     jsr keypress_handler
+    jsr blink_cursor
     jmp program_loop
+
+blink_cursor:
+    lda flags
+    bit #%00000001
+    beq .cursor_off
+    lda #6
+    jmp .print_cursor
+.cursor_off:
+    lda #" "
+.print_cursor:
+    sta (screen_buffer_wptr_l)
+    rts
 
 keypress_handler:
     lda keyb_rptr
     cmp keyb_wptr
     bne .keys_in_buffer
-
     rts
 .keys_in_buffer:
     sei
@@ -110,7 +124,11 @@ keypress_handler:
 io_setup:
     lda #0                         ; set port A as input (for keyboard)
     sta VIA_DDRA
-    lda #%10000010                 ; enable interrupt on CA1
+    ; sta VIA_DDRB
+    ; enable interrupts on CA1 and CB1:
+    ; CA1 is used by the PS/2 keyboard when all data is available on the shift registers
+    ; CB1 is used by the 555 timer for slowly timed things like the cursor
+    lda #%10010010                 ; enable interrupt on CA1 and CB1
     sta VIA_IER
     lda #%00000001                 ; set CA1 as positive active edge
     sta VIA_PCR
@@ -121,22 +139,49 @@ irq:
     phy
     phx
     lda VDP_REG                   ; read VDP status register
-    and #%10000000                ; highest bit is interrupt flag
-    beq .test_keyboard            ; beq happens when all zeros, so no interrupt from VDP
+    and #%10000000
+    beq .io_irq                   ; beq happens when all zeros, so no interrupt from VDP
     jsr vdp_interrupt
-    jmp .done
-.test_keyboard:
+.io_irq:
     lda VIA_IFR
-    and #%10000010
-    beq .done
+    asl a                         ; IRQ
+    bcc .done                     ; no interrupt on the 6502
+.timer1
+    asl a                         ; timer 1
+.timer2:
+    asl a                         ; timer 2
+.cb1:
+    asl a                         ; CB1
+    bcc .cb2
+    jsr slow_timer_interrupt
+.cb2:
+    asl a                         ; CB2
+.shift_reg:
+    asl a                         ; Shift register
+.ca1:
+    asl a                         ; CA1
+    bcc .ca2
     jsr keyboard_interrupt
+.ca2:
+    asl a                         ; CA2
 .done
     plx
     ply
     pla
     rts
 
+slow_timer_interrupt:
+    pha
+    bit VIA_PORTB
+    lda flags
+    eor #%00000001 ; cursor state on / off for blinking
+    sta flags
+    pla 
+    rts
+
 keyboard_interrupt:
+    pha
+    phx
     lda keyb_flags
     and #KEYB_RELEASE
     beq .read_key
@@ -190,6 +235,8 @@ keyboard_interrupt:
     jmp .done
 .backspace:
 .done
+    plx
+    pla
     rts
 
 ; ====================================================================================
@@ -200,17 +247,11 @@ vdp_interrupt:
     pha
     phx
     jsr reset_screen_buffer_rptr
-
     vdp_write_vram VDP_NAME_TABLE_BASE
 .screenbuffer_loop:
-    lda screen_buffer_rptr_l
-    cmp #(<end_screenbuffer)
-    bne .continue
-    lda screen_buffer_rptr_h
-    cmp #(>end_screenbuffer)
-    beq .done
-.continue:
     lda (screen_buffer_rptr_l)
+    cmp #END_OF_SCREEN_BUFFER
+    beq .done
     sta VDP_VRAM
     inc screen_buffer_rptr_l
     bne .screenbuffer_loop
@@ -249,13 +290,12 @@ vdp_pattern_table_loop:
     lda VDP_PATTERN_INIT                    ; compare the low byte
     cmp #<vdp_end_patterns
     bne vdp_pattern_table_loop              ; if not equal, loop again
-
     plx
     pla
     rts
 
 vdp_enable_display:
-    lda #$21                               ; fg / bg colours
+    lda #$71                               ; fg / bg colours
     sta VDP_REG
     lda #(VDP_REGISTER_BITS | 7)           ; register select (selecting register 1)
     sta VDP_REG
@@ -274,7 +314,7 @@ vdp_patterns:
   .byte $00,$00,$00,$1F,$1F,$18,$18,$18 ; rd
   .byte $18,$18,$18,$F8,$F8,$00,$00,$00 ; lu
   .byte $18,$18,$18,$1F,$1F,$00,$00,$00 ; ur
-  .byte $18,$18,$18,$FF,$FF,$18,$18,$18 ; lurd
+  .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$00 ; cursor
 ; ; <nonsense for debug>
   .byte $07,$07,$07,$07,$07,$07,$07,$00 ; 07
   .byte $08,$08,$08,$08,$08,$08,$08,$00 ; 08
@@ -461,4 +501,4 @@ screenbuffer: ; a buffer of ascii codes to print to the screen
     .byte "                                        "
     .byte "                                        "
     .byte "                                        "
-end_screenbuffer
+    .byte END_OF_SCREEN_BUFFER ; end of screen, to check when to stop writing to vram
