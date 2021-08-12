@@ -95,7 +95,7 @@ blink_cursor:
     lda flags
     bit #%00000001
     beq .cursor_off
-    lda #6
+    lda #("~" + 1)
     jmp .print_cursor
 .cursor_off:
     lda #" "
@@ -147,23 +147,23 @@ irq:
     asl a                         ; IRQ
     bcc .done                     ; no interrupt on the 6502
 .timer1
-    asl a                         ; timer 1
+    asl a
 .timer2:
-    asl a                         ; timer 2
+    asl a
 .cb1:
-    asl a                         ; CB1
+    asl a
     bcc .cb2
     jsr slow_timer_interrupt
 .cb2:
-    asl a                         ; CB2
+    asl a
 .shift_reg:
-    asl a                         ; Shift register
+    asl a
 .ca1:
-    asl a                         ; CA1
+    asl a
     bcc .ca2
     jsr keyboard_interrupt
 .ca2:
-    asl a                         ; CA2
+    asl a
 .done
     plx
     ply
@@ -252,6 +252,7 @@ vdp_interrupt:
     lda (screen_buffer_rptr_l)
     cmp #END_OF_SCREEN_BUFFER
     beq .done
+    sbc #$1f                                ; ascii characters in VDP 
     sta VDP_VRAM
     inc screen_buffer_rptr_l
     bne .screenbuffer_loop
@@ -307,41 +308,8 @@ vdp_enable_display:
     rts
 
 vdp_patterns:
-; line drawing
-  .byte $00,$00,$00,$00,$00,$00,$00,$00 ; lr
-  .byte $18,$18,$18,$18,$18,$18,$18,$18 ; ud
-  .byte $00,$00,$00,$F8,$F8,$18,$18,$18 ; ld
-  .byte $00,$00,$00,$1F,$1F,$18,$18,$18 ; rd
-  .byte $18,$18,$18,$F8,$F8,$00,$00,$00 ; lu
-  .byte $18,$18,$18,$1F,$1F,$00,$00,$00 ; ur
-  .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$00 ; cursor
-; ; <nonsense for debug>
-  .byte $07,$07,$07,$07,$07,$07,$07,$00 ; 07
-  .byte $08,$08,$08,$08,$08,$08,$08,$00 ; 08
-  .byte $09,$09,$09,$09,$09,$09,$09,$00 ; 09
-  .byte $0A,$0A,$0A,$0A,$0A,$0A,$0A,$00 ; 0A
-  .byte $0B,$0B,$0B,$0B,$0B,$0B,$0B,$00 ; 0B
-  .byte $0C,$0C,$0C,$0C,$0C,$0C,$0C,$00 ; 0C
-  .byte $0D,$0D,$0D,$0D,$0D,$0D,$0D,$00 ; 0D
-  .byte $0E,$0E,$0E,$0E,$0E,$0E,$0E,$00 ; 0E
-  .byte $0F,$0F,$0F,$0F,$0F,$0F,$0F,$00 ; 0F
-  .byte $10,$10,$10,$10,$10,$10,$10,$00 ; 10
-  .byte $11,$11,$11,$11,$11,$11,$11,$00 ; 11
-  .byte $12,$12,$12,$12,$12,$12,$12,$00 ; 12
-  .byte $13,$13,$13,$13,$13,$13,$13,$00 ; 13
-  .byte $14,$14,$14,$14,$14,$14,$14,$00 ; 14
-  .byte $15,$15,$15,$15,$15,$15,$15,$00 ; 15
-  .byte $16,$16,$16,$16,$16,$16,$16,$00 ; 16
-  .byte $17,$17,$17,$17,$17,$17,$17,$00 ; 17
-  .byte $18,$18,$18,$18,$18,$18,$18,$00 ; 18
-  .byte $19,$19,$19,$19,$19,$19,$19,$00 ; 19
-  .byte $1A,$1A,$1A,$1A,$1A,$1A,$1A,$00 ; 1A
-  .byte $1B,$1B,$1B,$1B,$1B,$1B,$1B,$00 ; 1B
-  .byte $1C,$1C,$1C,$1C,$1C,$1C,$1C,$00 ; 1C
-  .byte $1D,$1D,$1D,$1D,$1D,$1D,$1D,$00 ; 1D
-  .byte $1E,$1E,$1E,$1E,$1E,$1E,$1E,$00 ; 1E
-  .byte $1F,$1F,$1F,$1F,$1F,$1F,$1F,$00 ; 1F
-; </nonsense>
+  ; characters follow ASCII order but leave out all non printing characters
+  ; before the space character
   .byte $00,$00,$00,$00,$00,$00,$00,$00 ; ' '
   .byte $20,$20,$20,$00,$20,$20,$00,$00 ; !
   .byte $50,$50,$50,$00,$00,$00,$00,$00 ; "
@@ -437,19 +405,20 @@ vdp_patterns:
   .byte $40,$40,$40,$00,$40,$40,$40,$00 ; |
   .byte $E0,$10,$20,$18,$20,$10,$E0,$00 ; }
   .byte $40,$A8,$10,$00,$00,$00,$00,$00 ; ~
-  .byte $A8,$50,$A8,$50,$A8,$50,$A8,$00 ; checkerboard
+; non ascii
+  .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$00 ; cursor
 vdp_end_patterns:
 
 
 keymap:
-  .byte "????????????? `?" ; 00-0F
+  .byte "????????????? `?" ; 00-0F           ; 0d: tab
   .byte "?????q1???zsaw2?" ; 10-1F
-  .byte "?cxde43?? vftr5?" ; 20-2F
+  .byte "?cxde43?? vftr5?" ; 20-2F           ; 29: spacebar
   .byte "?nbhgy6???mju78?" ; 30-3F
   .byte "?,kio09??./l;p-?" ; 40-4F
-  .byte "??'?[=????",$0a,"]?\??" ; 50-5F
+  .byte "??'?[=????",$0a,"]?\??" ; 50-5F     ; 0a: enter / line feed
   .byte "?????????1?47???" ; 60-6F
-  .byte "0.2568",$1b,"??+3-*9??" ; 70-7F
+  .byte "0.2568",$1b,"??+3-*9??" ; 70-7F     ; 1b: esc
   .byte "????????????????" ; 80-8F
   .byte "????????????????" ; 90-9F
   .byte "????????????????" ; A0-AF
