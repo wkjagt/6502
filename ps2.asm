@@ -46,6 +46,9 @@ screen_buffer_rptr_l = $37
 screen_buffer_rptr_h = $38
 flags                = $39
 
+cursor_column        = $40
+cursor_row           = $41
+
     .org $0300
   
 system_irq:
@@ -71,28 +74,38 @@ reset:
     sta keyb_wptr
     sta keyb_flags
     sta flags
-    lda #(>screenbuffer)
-    sta screen_buffer_wptr_h
-    lda #(<screenbuffer + 80) ; + to start on the 3rd line (40 chars per line)
-    sta screen_buffer_wptr_l
     jsr reset_screen_buffer_rptr
+    lda #0
+    sta cursor_column
+    lda #2
+    sta cursor_row
+    jsr calculate_cursor_pos
     cli
     jmp program_loop
 
-reset_screen_buffer_rptr:
+reset_screen_buffer_wptr:
+    lda #(<screenbuffer)
+    sta screen_buffer_wptr_l
     lda #(>screenbuffer)
-    sta screen_buffer_rptr_h
+    sta screen_buffer_wptr_h
+    rts
+
+reset_screen_buffer_rptr:
     lda #(<screenbuffer)
     sta screen_buffer_rptr_l
+    lda #(>screenbuffer)
+    sta screen_buffer_rptr_h
     rts
 
 program_loop:
     jsr keypress_handler
-    jsr blink_cursor
     jmp program_loop
 
 blink_cursor:
+    jsr calculate_cursor_pos
     lda flags
+    eor #%00000001 ; cursor state on / off for blinking
+    sta flags
     bit #%00000001
     beq .cursor_off
     lda #("~" + 1)
@@ -110,15 +123,44 @@ keypress_handler:
     rts
 .keys_in_buffer:
     sei
+    jsr calculate_cursor_pos
     ldx keyb_rptr
-    lda keyb_buffer, x
     inc keyb_rptr
+    lda keyb_buffer, x
     sta (screen_buffer_wptr_l)
-    inc screen_buffer_wptr_l
-    bne .done
-    inc screen_buffer_wptr_h
-.done:
+    inc cursor_column
     cli
+    rts
+
+calculate_cursor_pos:
+    pha ; push A onto the stack because it contains the character to write
+    ; and it's being overwritten in this routine to calculate the position
+
+    jsr reset_screen_buffer_wptr
+    ; calculate buffer offset from row and column
+    ; calculation = (row * 40) + column
+    ldx #0
+.multiply:
+    ; add 40 to the write pointer for the number of times in the row value
+    lda screen_buffer_wptr_l
+    clc
+    adc #$28  ; add 40
+    sta screen_buffer_wptr_l
+    lda screen_buffer_wptr_h
+    adc #0    ; add whatever is in the carry flag
+    sta screen_buffer_wptr_h
+    inx
+    cpx cursor_row
+    bne .multiply
+    ; add the column value
+    lda screen_buffer_wptr_l
+    clc
+    adc cursor_column
+    sta screen_buffer_wptr_l
+    lda screen_buffer_wptr_h
+    adc #0    ; add whatever is in the carry flag
+    sta screen_buffer_wptr_h
+    pla
     rts
 
 io_setup:
@@ -153,7 +195,7 @@ irq:
 .cb1:
     asl a
     bcc .cb2
-    jsr slow_timer_interrupt
+    jsr slow_clock_interrupt
 .cb2:
     asl a
 .shift_reg:
@@ -170,13 +212,11 @@ irq:
     pla
     rts
 
-slow_timer_interrupt:
+slow_clock_interrupt:
     pha
-    bit VIA_PORTB
-    lda flags
-    eor #%00000001 ; cursor state on / off for blinking
-    sta flags
+    jsr blink_cursor
     pla 
+    bit VIA_PORTB  ; only to clear the interrupt because this uses CB1
     rts
 
 keyboard_interrupt:
