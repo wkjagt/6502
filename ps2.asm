@@ -24,7 +24,6 @@ KEYB_SHIFT          = %00000010
 KEYB_RELEASE_CODE     = $F0
 KEYB_LEFT_SHIFT_CODE  = $12
 KEYB_RIGHT_SHIFT_CODE = $59
-KEYB_BACKSPACE_CODE   = $66
 
 END_OF_SCREEN_BUFFER = $ff
 
@@ -127,9 +126,36 @@ keypress_handler:
     ldx keyb_rptr
     inc keyb_rptr
     lda keyb_buffer, x
+
+    cmp #$0a      ; enter key
+    bne .backspace
+    jsr line_feed
+    jmp .done
+.backspace:
+    cmp #$08
+    bne .write_char
+    lda #" " ; clear cursor
     sta (screen_buffer_wptr_l)
-    inc cursor_column
+    dec cursor_column
+    jmp .done
+.write_char:
+    sta (screen_buffer_wptr_l)
+    lda cursor_column
+    clc
+    adc #1
+    sta cursor_column
+    cmp #40
+    bne .done
+    jsr line_feed
+.done:
     cli
+    rts
+
+line_feed:
+    lda #0
+    sta (screen_buffer_wptr_l)
+    sta cursor_column
+    inc cursor_row
     rts
 
 calculate_cursor_pos:
@@ -248,8 +274,6 @@ keyboard_interrupt:
     beq .shift_down
     cmp #KEYB_RIGHT_SHIFT_CODE
     beq .shift_down
-    cmp #KEYB_BACKSPACE_CODE
-    beq .backspace
 
     lda keyb_flags
     and #KEYB_SHIFT
@@ -273,7 +297,6 @@ keyboard_interrupt:
     ora #KEYB_RELEASE
     sta keyb_flags
     jmp .done
-.backspace:
 .done
     plx
     pla
@@ -450,14 +473,14 @@ vdp_patterns:
 vdp_end_patterns:
 
 
-keymap:
+keymap: ; scancode to ascii code
   .byte "????????????? `?" ; 00-0F           ; 0d: tab
   .byte "?????q1???zsaw2?" ; 10-1F
   .byte "?cxde43?? vftr5?" ; 20-2F           ; 29: spacebar
   .byte "?nbhgy6???mju78?" ; 30-3F
   .byte "?,kio09??./l;p-?" ; 40-4F
   .byte "??'?[=????",$0a,"]?\??" ; 50-5F     ; 0a: enter / line feed
-  .byte "?????????1?47???" ; 60-6F
+  .byte "??????",$08,"??1?47???" ; 60-6F     ; 06: backspace
   .byte "0.2568",$1b,"??+3-*9??" ; 70-7F     ; 1b: esc
   .byte "????????????????" ; 80-8F
   .byte "????????????????" ; 90-9F
