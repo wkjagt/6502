@@ -76,48 +76,29 @@ system_irq:
 reset:
     jsr vdp_setup
     jsr io_setup
+    jsr keyboard_setup
+    jsr screen_setup
     lda #0
-    sta keyb_rptr
-    sta keyb_wptr
-    sta keyb_flags
     sta flags
+    cli
+    jmp program_loop
+
+screen_setup:
     jsr reset_screen_buffer_rptr
     lda #0
     sta cursor_column
     lda #2
     sta cursor_row
     jsr calculate_cursor_pos
-    cli
-    jmp program_loop
-
-reset_screen_buffer_wptr:
-    lda #(<screenbuffer)
-    sta screen_buffer_wptr
-    lda #(>screenbuffer)
-    sta screen_buffer_wptr + 1
     rts
 
-reset_screen_buffer_rptr:
-    lda #(<screenbuffer)
-    sta screen_buffer_rptr
-    lda #(>screenbuffer)
-    sta screen_buffer_rptr + 1
+keyboard_setup:
+    lda #0
+    sta keyb_rptr
+    sta keyb_wptr
+    sta keyb_flags
     rts
 
-incr_screen_buffer_rptr:
-    inc screen_buffer_rptr
-    bne .done
-    inc screen_buffer_rptr + 1
-.done:
-    rts
-
-incr_screen_buffer_wptr:
-    inc screen_buffer_wptr
-    bne .done
-    inc screen_buffer_wptr + 1
-.done:
-    rts
-    
 program_loop:
     jsr update_vram
     jsr keypress_handler
@@ -367,9 +348,8 @@ keyboard_interrupt:
     pla
     rts
 
-; ====================================================================================
-;                              VDP RELATED ROUTINES
-; ====================================================================================
+
+;======================= VDP routines =======================
 
 update_vram:
     lda flags
@@ -434,6 +414,38 @@ vdp_enable_display:
     lda #(VDP_REGISTER_BITS | 1)           ; register select (selecting register 1)
     sta VDP_REG
     rts
+
+;======================= Utility routines =======================
+
+reset_screen_buffer_wptr:
+    lda #(<screenbuffer)
+    sta screen_buffer_wptr
+    lda #(>screenbuffer)
+    sta screen_buffer_wptr + 1
+    rts
+
+reset_screen_buffer_rptr:
+    lda #(<screenbuffer)
+    sta screen_buffer_rptr
+    lda #(>screenbuffer)
+    sta screen_buffer_rptr + 1
+    rts
+
+incr_screen_buffer_rptr:
+    inc screen_buffer_rptr
+    bne .done
+    inc screen_buffer_rptr + 1
+.done:
+    rts
+
+incr_screen_buffer_wptr:
+    inc screen_buffer_wptr
+    bne .done
+    inc screen_buffer_wptr + 1
+.done:
+    rts
+
+;======================= Data =======================
 
 vdp_patterns:
   ; characters follow ASCII order but leave out all non printing characters
