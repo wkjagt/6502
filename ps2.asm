@@ -111,6 +111,7 @@ incr_screen_buffer_wptr:
     rts
     
 program_loop:
+    jsr update_vram
     jsr keypress_handler
     jmp program_loop
 
@@ -126,7 +127,7 @@ blink_cursor:
 .cursor_off:
     lda #"_"
 .print_cursor:
-    sta (screen_buffer_wptr_l)
+    jsr write_to_buffer
     rts
 
 keypress_handler:
@@ -135,8 +136,8 @@ keypress_handler:
     bne .keys_in_buffer
     rts
 .keys_in_buffer:
-    sei
     jsr calculate_cursor_pos
+    ; sei
     ldx keyb_rptr
     inc keyb_rptr
     lda keyb_buffer, x
@@ -149,7 +150,7 @@ keypress_handler:
     cmp #$08
     bne .write_char
     lda #" " ; clear cursor
-    sta (screen_buffer_wptr_l)
+    jsr write_to_buffer
     lda cursor_column
     beq .done
     dec cursor_column
@@ -160,7 +161,7 @@ keypress_handler:
     cmp #39
     beq .done
     txa
-    sta (screen_buffer_wptr_l)
+    jsr write_to_buffer
     inc cursor_column
 .done:
     jsr blink_cursor
@@ -169,7 +170,8 @@ keypress_handler:
 
 line_feed:
     lda #0
-    sta (screen_buffer_wptr_l) ; clear cursor
+    jsr write_to_buffer ; clear cursor
+    lda #0
     sta cursor_column
     lda cursor_row
     cmp #22
@@ -183,10 +185,17 @@ line_feed:
 .done:
     rts
 
+write_to_buffer:
+    sta (screen_buffer_wptr_l)
+    lda flags
+    ora #%00000010  ; stale video
+    sta flags
+    rts
+
 scroll_up:
     ; starting at position 40, copy all characters to 40 positions to
     ; the left in the screenbuffer
-    sei
+    ; sei
     jsr reset_screen_buffer_wptr ; start writing at the start of screen buffer
     jsr reset_screen_buffer_rptr
     ; set read pointer to 40 after screen buffer
@@ -201,12 +210,12 @@ scroll_up:
     lda (screen_buffer_rptr_l)
     cmp #END_OF_SCREEN_BUFFER
     beq .done
-    sta (screen_buffer_wptr_l)
+    jsr write_to_buffer
     jsr incr_screen_buffer_rptr
     jsr incr_screen_buffer_wptr
     jmp .loop
 .done:
-    cli
+    ; cli
     rts
 
 calculate_cursor_pos:
@@ -257,10 +266,6 @@ irq:
     pha
     phy
     phx
-    lda VDP_REG                   ; read VDP status register
-    and #%10000000
-    beq .io_irq                   ; beq happens when all zeros, so no interrupt from VDP
-    jsr vdp_interrupt
 .io_irq:
     lda VIA_IFR
     asl a                         ; IRQ
@@ -299,20 +304,21 @@ slow_clock_interrupt:
 keyboard_interrupt:
     pha
     phx
-    lda keyb_flags
-    and #KEYB_RELEASE
-    beq .read_key
-    lda keyb_flags
-    eor #KEYB_RELEASE
-    sta keyb_flags
-    lda VIA_PORTA                   ; read the key that's being released
-    cmp #KEYB_LEFT_SHIFT_CODE
+    lda keyb_flags                  ; read the current keyboard flags
+    and #KEYB_RELEASE               ; see if the previous scan code was for a key release 
+    beq .read_key                   ; if it isn't, go ahead and read the key
+    lda keyb_flags                  
+    eor #KEYB_RELEASE               ; the previous code was a release, so the new code
+                                    ; is for the key that's being released.
+    sta keyb_flags                  ; Turn off the release flag
+    lda VIA_PORTA                   ; Read the key that's being released
+    cmp #KEYB_LEFT_SHIFT_CODE       ; It's the shift key that was released: handle that case
     beq .shift_up
     cmp #KEYB_RIGHT_SHIFT_CODE
     beq .shift_up
     jmp .done
 .shift_up:
-    lda keyb_flags
+    lda keyb_flags                  ; turn off the shift flag
     eor #KEYB_SHIFT
     sta keyb_flags
     jmp .done
@@ -357,28 +363,24 @@ keyboard_interrupt:
 ;                              VDP RELATED ROUTINES
 ; ====================================================================================
 
-vdp_interrupt:
-    pha
-    phx
-    ; only update the screen half of the time, to save time
+update_vram:
     lda flags
-    eor #%00000010 ; cursor state on / off for blinking
-    sta flags
     bit #%00000010
     beq .done
+    and #%11111101
+    sta flags
     jsr reset_screen_buffer_rptr
     vdp_write_vram VDP_NAME_TABLE_BASE
 .screenbuffer_loop:
     lda (screen_buffer_rptr_l)
     cmp #END_OF_SCREEN_BUFFER
     beq .done
-    sbc #$1f                                ; ascii characters in VDP 
+    sec
+    sbc #$20                                ; ascii characters in VDP 
     sta VDP_VRAM
     jsr incr_screen_buffer_rptr
     jmp .screenbuffer_loop
 .done
-    plx
-    pla
     rts
 
 vdp_setup:
@@ -564,7 +566,7 @@ keymap_shifted:
   .byte "????????????????" ; F0-FF
 
 screenbuffer: ; a buffer of ascii codes to print to the screen
-    .byte "              - 6502 OS -               "
+    .byte "              < 6502 OS >               "
     .byte "                                        "
     .byte "                                        "
     .byte "                                        "
