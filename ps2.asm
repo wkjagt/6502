@@ -10,43 +10,51 @@ VDP_SPRITE_PATTERNS_TABLE_BASE = $0000
 VDP_SPRITE_ATTR_TABLE_BASE     = $0100
 
 ; io
-VIA_PORTB     = $6000
-VIA_PORTA     = $6001
-VIA_DDRB      = $6002
-VIA_DDRA      = $6003
-VIA_PCR       = $600c ; peripheral control register
-VIA_IFR       = $600d ; interrupt flag register
-VIA_IER       = $600e ; interrupt enable register
+VIA_PORTB                      = $6000
+VIA_PORTA                      = $6001
+VIA_DDRB                       = $6002
+VIA_DDRA                       = $6003
+VIA_PCR                        = $600c ; peripheral control register
+VIA_IFR                        = $600d ; interrupt flag register
+VIA_IER                        = $600e ; interrupt enable register
 
-KEYB_RELEASE        = %00000001
-KEYB_SHIFT          = %00000010
+KEYB_RELEASE                   = %00000001
+KEYB_SHIFT                     = %00000010
 
-KEYB_RELEASE_CODE     = $F0
-KEYB_LEFT_SHIFT_CODE  = $12
-KEYB_RIGHT_SHIFT_CODE = $59
+CURSOR_ON                      = %00000001
+VIDEO_BUFFER_STALE             = %00000010
 
-END_OF_SCREEN_BUFFER = $ff
+ASCII_ENTER                    = $0a
+ASCII_BACKSPACE                = $08
 
-; zero page addresses
-VDP_PATTERN_INIT    = $30
-VDP_PATTERN_INIT_HI = $31
+KEYB_RELEASE_CODE              = $F0
+KEYB_LEFT_SHIFT_CODE           = $12
+KEYB_RIGHT_SHIFT_CODE          = $59
+
+END_OF_SCREEN_BUFFER           = $ff
+
+;======================= zero page addresses =======================
+    .dsect
+    .org $30
+vdp_pattern_init:    reserve 2
+flags:               reserve 1
 
 ; keyboard
-keyb_wptr           = $32
-keyb_rptr           = $33
-keyb_flags          = $34
-keyb_buffer         = $0200 ; one page for keyboard buffer
+keyb_rptr:           reserve 1
+keyb_wptr:           reserve 1
+keyb_flags:          reserve 1
 
-; 16 bit pointer to where the next character is written to the screen buffer
-screen_buffer_wptr_l = $35
-screen_buffer_wptr_h = $36
 ; 16 bit pointer used for looping over the screen buffer and writing to VDP
-screen_buffer_rptr_l = $37
-screen_buffer_rptr_h = $38
-flags                = $39
+screen_buffer_rptr:  reserve 2
+; 16 bit pointer to where the next character is written to the screen buffer
+screen_buffer_wptr:  reserve 2
 
-cursor_column        = $40
-cursor_row           = $41
+cursor_column:       reserve 1
+cursor_row:          reserve 1
+    .dend
+;======================= /zero page addresses =======================
+
+keyb_buffer                    = $0200 ; one page for keyboard buffer
 
     .org $0300
   
@@ -84,29 +92,29 @@ reset:
 
 reset_screen_buffer_wptr:
     lda #(<screenbuffer)
-    sta screen_buffer_wptr_l
+    sta screen_buffer_wptr
     lda #(>screenbuffer)
-    sta screen_buffer_wptr_h
+    sta screen_buffer_wptr + 1
     rts
 
 reset_screen_buffer_rptr:
     lda #(<screenbuffer)
-    sta screen_buffer_rptr_l
+    sta screen_buffer_rptr
     lda #(>screenbuffer)
-    sta screen_buffer_rptr_h
+    sta screen_buffer_rptr + 1
     rts
 
 incr_screen_buffer_rptr:
-    inc screen_buffer_rptr_l
+    inc screen_buffer_rptr
     bne .done
-    inc screen_buffer_rptr_h
+    inc screen_buffer_rptr + 1
 .done:
     rts
 
 incr_screen_buffer_wptr:
-    inc screen_buffer_wptr_l
+    inc screen_buffer_wptr
     bne .done
-    inc screen_buffer_wptr_h
+    inc screen_buffer_wptr + 1
 .done:
     rts
     
@@ -118,9 +126,9 @@ program_loop:
 blink_cursor:
     jsr calculate_cursor_pos
     lda flags
-    eor #%00000001 ; cursor state on / off for blinking
+    eor #CURSOR_ON ; cursor state on / off for blinking
     sta flags
-    bit #%00000001
+    bit #CURSOR_ON
     beq .cursor_off
     lda #("~" + 1)
     jmp .print_cursor
@@ -142,12 +150,12 @@ keypress_handler:
     inc keyb_rptr
     lda keyb_buffer, x
 .enter:
-    cmp #$0a
+    cmp #ASCII_ENTER
     bne .backspace
     jsr line_feed
     jmp .done
 .backspace:
-    cmp #$08
+    cmp #ASCII_BACKSPACE
     bne .write_char
     lda #" " ; clear cursor
     jsr write_to_buffer
@@ -174,7 +182,7 @@ line_feed:
     lda #0
     sta cursor_column
     lda cursor_row
-    cmp #22
+    cmp #21
     beq .scroll
     inc cursor_row
     jmp .done
@@ -186,9 +194,9 @@ line_feed:
     rts
 
 write_to_buffer:
-    sta (screen_buffer_wptr_l)
+    sta (screen_buffer_wptr)
     lda flags
-    ora #%00000010  ; stale video
+    ora #VIDEO_BUFFER_STALE  ; stale video
     sta flags
     rts
 
@@ -202,12 +210,12 @@ scroll_up:
     clc
     lda #(<screenbuffer)
     adc #40
-    sta screen_buffer_rptr_l
-    lda screen_buffer_rptr_h
+    sta screen_buffer_rptr
+    lda screen_buffer_rptr + 1
     adc #0
-    sta screen_buffer_rptr_h
+    sta screen_buffer_rptr + 1
 .loop:
-    lda (screen_buffer_rptr_l)
+    lda (screen_buffer_rptr)
     cmp #END_OF_SCREEN_BUFFER
     beq .done
     jsr write_to_buffer
@@ -228,24 +236,24 @@ calculate_cursor_pos:
     ldx #0
 .multiply:
     ; add 40 to the write pointer for the number of times in the row value
-    lda screen_buffer_wptr_l
+    lda screen_buffer_wptr
     clc
     adc #$28  ; add 40
-    sta screen_buffer_wptr_l
-    lda screen_buffer_wptr_h
+    sta screen_buffer_wptr
+    lda screen_buffer_wptr + 1
     adc #0    ; add whatever is in the carry flag
-    sta screen_buffer_wptr_h
+    sta screen_buffer_wptr + 1
     inx
     cpx cursor_row
     bne .multiply
     ; add the column value
-    lda screen_buffer_wptr_l
+    lda screen_buffer_wptr
     clc
     adc cursor_column
-    sta screen_buffer_wptr_l
-    lda screen_buffer_wptr_h
+    sta screen_buffer_wptr
+    lda screen_buffer_wptr + 1
     adc #0    ; add whatever is in the carry flag
-    sta screen_buffer_wptr_h
+    sta screen_buffer_wptr + 1
     pla
     rts
 
@@ -365,14 +373,14 @@ keyboard_interrupt:
 
 update_vram:
     lda flags
-    bit #%00000010
+    bit #VIDEO_BUFFER_STALE
     beq .done
-    and #%11111101
+    and #(~VIDEO_BUFFER_STALE)
     sta flags
     jsr reset_screen_buffer_rptr
     vdp_write_vram VDP_NAME_TABLE_BASE
 .screenbuffer_loop:
-    lda (screen_buffer_rptr_l)
+    lda (screen_buffer_rptr)
     cmp #END_OF_SCREEN_BUFFER
     beq .done
     sec
@@ -393,22 +401,22 @@ vdp_initialize_pattern_table:
     phx
     vdp_write_vram VDP_PATTERN_TABLE_BASE   ; write the vram pattern table address to the 9918
     lda #<vdp_patterns                      ; load the start address of the patterns to zero page
-    sta VDP_PATTERN_INIT
+    sta vdp_pattern_init
     lda #>vdp_patterns
-    sta VDP_PATTERN_INIT_HI
+    sta vdp_pattern_init + 1
 vdp_pattern_table_loop:
-    lda (VDP_PATTERN_INIT)                  ; load A with the value at VDP_PATTERN_INIT 
+    lda (vdp_pattern_init)                  ; load A with the value at vdp_pattern_init 
     sta VDP_VRAM                            ; and store it to VRAM
-    lda VDP_PATTERN_INIT                    ; load the low byte of VDP_PATTERN_INIT address into A
+    lda vdp_pattern_init                    ; load the low byte of vdp_pattern_init address into A
     clc                                     ; clear carry flag
     adc #1                                  ; Add 1, with carry
-    sta VDP_PATTERN_INIT                    ; store back into VDP_PATTERN_INIT
+    sta vdp_pattern_init                    ; store back into vdp_pattern_init
     lda #0                                  ; load A with 0
-    adc VDP_PATTERN_INIT_HI                 ; add with the carry flag to the high address
-    sta VDP_PATTERN_INIT_HI                 ; and store that back into the high byte
+    adc vdp_pattern_init + 1                 ; add with the carry flag to the high address
+    sta vdp_pattern_init + 1                 ; and store that back into the high byte
     cmp #>vdp_end_patterns                  ; compare if we're at the end of the patterns
     bne vdp_pattern_table_loop              ; if not, loop again
-    lda VDP_PATTERN_INIT                    ; compare the low byte
+    lda vdp_pattern_init                    ; compare the low byte
     cmp #<vdp_end_patterns
     bne vdp_pattern_table_loop              ; if not equal, loop again
     plx
@@ -567,27 +575,5 @@ keymap_shifted:
 
 screenbuffer: ; a buffer of ascii codes to print to the screen
     .byte "              < 6502 OS >               "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
-    .byte "                                        "
+    .blk 23 * 40
     .byte END_OF_SCREEN_BUFFER ; end of screen, to check when to stop writing to vram
