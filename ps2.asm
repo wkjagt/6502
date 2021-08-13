@@ -96,6 +96,20 @@ reset_screen_buffer_rptr:
     sta screen_buffer_rptr_h
     rts
 
+incr_screen_buffer_rptr:
+    inc screen_buffer_rptr_l
+    bne .done
+    inc screen_buffer_rptr_h
+.done:
+    rts
+
+incr_screen_buffer_wptr:
+    inc screen_buffer_wptr_l
+    bne .done
+    inc screen_buffer_wptr_h
+.done:
+    rts
+    
 program_loop:
     jsr keypress_handler
     jmp program_loop
@@ -110,7 +124,7 @@ blink_cursor:
     lda #("~" + 1)
     jmp .print_cursor
 .cursor_off:
-    lda #" "
+    lda #"_"
 .print_cursor:
     sta (screen_buffer_wptr_l)
     rts
@@ -126,8 +140,8 @@ keypress_handler:
     ldx keyb_rptr
     inc keyb_rptr
     lda keyb_buffer, x
-
-    cmp #$0a      ; enter key
+.enter:
+    cmp #$0a
     bne .backspace
     jsr line_feed
     jmp .done
@@ -136,26 +150,63 @@ keypress_handler:
     bne .write_char
     lda #" " ; clear cursor
     sta (screen_buffer_wptr_l)
+    lda cursor_column
+    beq .done
     dec cursor_column
     jmp .done
 .write_char:
-    sta (screen_buffer_wptr_l)
+    tax
     lda cursor_column
-    clc
-    adc #1
-    sta cursor_column
-    cmp #40
-    bne .done
-    jsr line_feed
+    cmp #39
+    beq .done
+    txa
+    sta (screen_buffer_wptr_l)
+    inc cursor_column
 .done:
+    jsr blink_cursor
     cli
     rts
 
 line_feed:
     lda #0
-    sta (screen_buffer_wptr_l)
+    sta (screen_buffer_wptr_l) ; clear cursor
     sta cursor_column
+    lda cursor_row
+    cmp #22
+    beq .scroll
     inc cursor_row
+    jmp .done
+.scroll:
+    jsr scroll_up
+    lda #0
+    sta cursor_column
+.done:
+    rts
+
+scroll_up:
+    ; starting at position 40, copy all characters to 40 positions to
+    ; the left in the screenbuffer
+    sei
+    jsr reset_screen_buffer_wptr ; start writing at the start of screen buffer
+    jsr reset_screen_buffer_rptr
+    ; set read pointer to 40 after screen buffer
+    clc
+    lda #(<screenbuffer)
+    adc #40
+    sta screen_buffer_rptr_l
+    lda screen_buffer_rptr_h
+    adc #0
+    sta screen_buffer_rptr_h
+.loop:
+    lda (screen_buffer_rptr_l)
+    cmp #END_OF_SCREEN_BUFFER
+    beq .done
+    sta (screen_buffer_wptr_l)
+    jsr incr_screen_buffer_rptr
+    jsr incr_screen_buffer_wptr
+    jmp .loop
+.done:
+    cli
     rts
 
 calculate_cursor_pos:
@@ -243,7 +294,7 @@ slow_clock_interrupt:
     jsr blink_cursor
     pla 
     bit VIA_PORTB  ; only to clear the interrupt because this uses CB1
-    rts
+    rts            ; NOTE: use CA2 instead
 
 keyboard_interrupt:
     pha
@@ -309,6 +360,12 @@ keyboard_interrupt:
 vdp_interrupt:
     pha
     phx
+    ; only update the screen half of the time, to save time
+    lda flags
+    eor #%00000010 ; cursor state on / off for blinking
+    sta flags
+    bit #%00000010
+    beq .done
     jsr reset_screen_buffer_rptr
     vdp_write_vram VDP_NAME_TABLE_BASE
 .screenbuffer_loop:
@@ -317,9 +374,7 @@ vdp_interrupt:
     beq .done
     sbc #$1f                                ; ascii characters in VDP 
     sta VDP_VRAM
-    inc screen_buffer_rptr_l
-    bne .screenbuffer_loop
-    inc screen_buffer_rptr_h
+    jsr incr_screen_buffer_rptr
     jmp .screenbuffer_loop
 .done
     plx
