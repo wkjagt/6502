@@ -122,14 +122,16 @@ blink_cursor:
 keypress_handler:
     lda keyb_rptr
     cmp keyb_wptr
-    bne .keys_in_buffer
-    rts
-.keys_in_buffer:
-    jsr calculate_cursor_pos
-    ; sei
+    beq .done
     ldx keyb_rptr
     inc keyb_rptr
     lda keyb_buffer, x
+    jsr echo
+.done:
+    rts
+
+echo:
+    jsr calculate_cursor_pos
 .enter:
     cmp #ASCII_ENTER
     bne .backspace
@@ -154,8 +156,7 @@ keypress_handler:
     inc cursor_column
 .done:
     jsr blink_cursor
-    cli
-    rts
+    rts    
 
 line_feed:
     lda #0
