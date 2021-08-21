@@ -14,7 +14,7 @@ CURSOR_ON                      = %00000001
 VIDEO_BUFFER_STALE             = %00000010
 END_OF_SCREEN_BUFFER           = $FF
 ENTER                          = $0a
-BACKSPACE                      = $08
+BACKSP                         = $08
 
 ;======================= zero page addresses =======================
     .dsect
@@ -50,7 +50,7 @@ echo:
     jsr calculate_cursor_pos
     cmp #ENTER
     beq .enter
-    cmp #BACKSPACE
+    cmp #BACKSP
     beq .backspace
     tax
     lda cursor_column
