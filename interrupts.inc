@@ -1,4 +1,6 @@
-interrupt:
+    .include "macros.inc"
+
+IRQ:
     store_registers
 .io_irq:
     lda VIA_IFR

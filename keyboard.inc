@@ -28,7 +28,7 @@ keyb_flags:          reserve 1
 
 keyb_buffer                    = $0200 ; one page for keyboard buffer
 
-keyboard_setup:
+KBSETUP:
     lda #0                         ; set port A as input (for keyboard)
     sta VIA_DDRA
     lda #%10010010                 ; enable interrupt on CA1 and CB1
@@ -42,7 +42,7 @@ keyboard_setup:
     sta keyb_flags
     rts
 
-read_key:
+RDKEY:
     lda keyb_rptr
     cmp keyb_wptr
     beq .no_key

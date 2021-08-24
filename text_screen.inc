@@ -17,6 +17,8 @@ ENTER                          = $0a
 BACKSP                         = $08
 
 ;======================= zero page addresses =======================
+; Uses $10 - $18
+;===================================================================
     .dsect
     .org $10
 vdp_pattern_init:    reserve 2
@@ -33,7 +35,7 @@ cursor_row:          reserve 1
 ;======================= /zero page addresses =======================
 
 
-screen_setup:
+SCRNSETUP:
     lda #0
     sta screen_flags
     jsr vdp_initialize_pattern_table
@@ -46,7 +48,7 @@ screen_setup:
     jsr calculate_cursor_pos
     rts
 
-echo:
+ECHO:
     jsr calculate_cursor_pos
     cmp #ENTER
     beq .enter
