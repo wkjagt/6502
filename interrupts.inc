@@ -1,3 +1,5 @@
+VIA_IFR                        = $600d ; interrupt flag register
+
     .include "macros.inc"
 
 IRQ:

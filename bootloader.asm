@@ -1,9 +1,18 @@
 ; 6522 VIA
-VIA_START = $6000
-PORTA = VIA_START + 1
-PORTB = VIA_START + 0
-DDRA  = VIA_START + 3
-DDRB  = VIA_START + 2
+VIA_PORTB                      = $6000
+VIA_PORTA                      = $6001
+VIA_DDRB                       = $6002
+VIA_DDRA                       = $6003
+VIA_PCR                        = $600c ; peripheral control register
+VIA_IFR                        = $600d ; interrupt flag register
+VIA_IER                        = $600e ; interrupt enable register
+
+KEYB_RELEASE                   = %00000001
+KEYB_SHIFT                     = %00000010
+KEYB_RELEASE_CODE              = $F0
+KEYB_LEFT_SHIFT_CODE           = $12
+KEYB_RIGHT_SHIFT_CODE          = $59
+MAX_SCANCODE                   = $7e
 
 ; 6551 ACIA
 ACIA_START   = $4000
@@ -16,6 +25,14 @@ ACIA_STATUS_RX_FULL    = 1 << 3
 
 PROGRAM_WRITE_PTR_L    = $0002
 PROGRAM_WRITE_PTR_H    = $0003
+keyb_rptr              = $30
+keyb_wptr              = $31
+keyb_flags             = $32
+keyb_buffer                    = $0200 ; one page for keyboard buffer
+
+
+
+
 PROGRAM_START          = $0300
 
   .org $c000
@@ -33,11 +50,11 @@ reset:
 setup:              
                     sei                          ; disable interrupts
 setup_via:          lda #%11111111
-                    sta DDRA
-                    sta DDRB
+                    sta VIA_DDRA
+                    sta VIA_DDRB
                     lda #$00
-                    sta PORTA
-                    sta PORTB
+                    sta VIA_PORTA
+                    sta VIA_PORTB
 
 setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
@@ -50,16 +67,17 @@ setup_program_ptrs: lda #0                       ; reset counters that count prg
 setup_vdp:          jsr vdp_setup
 
                     lda #$ff                     ; ready light on
-                    sta PORTB
+                    sta VIA_PORTB
+                    jsr KBSETUP
 
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
                     lda #$00                     ; ready light off
-                    sta PORTB                    
+                    sta VIA_PORTB                    
                     jsr load_program
                     lda #$ff                     ; ready light on
-                    sta PORTB
+                    sta VIA_PORTB
 
                     jsr $0308                    ; jump over header
                     jmp loop
@@ -91,6 +109,31 @@ read_serial_byte:   lda ACIA_STATUS
 nmi:                rti
 irq:                jsr PROGRAM_START           ; interrupt handler needs to be at the start of the program
                     rti
+KBSETUP:
+    lda #0                         ; set port A as input (for keyboard)
+    sta VIA_DDRA
+    lda #%10010010                 ; enable interrupt on CA1 and CB1
+    sta VIA_IER
+    lda #%00000001                 ; set CA1 as positive active edge
+    sta VIA_PCR
+
+    lda #0
+    sta keyb_rptr
+    sta keyb_wptr
+    sta keyb_flags
+    rts
+
+RDKEY:
+    lda keyb_rptr
+    cmp keyb_wptr
+    beq .no_key
+    ldx keyb_rptr
+    inc keyb_rptr
+    lda keyb_buffer, x
+    rts
+.no_key:
+    lda #0
+    rts
 
                     .org $FFFA
                     .word nmi

@@ -1,11 +1,11 @@
+RDKEY = $C0D0
                 .ORG    $0300           ; Bootloader calls this on IRQ
                 JSR     IRQ
                 RTS
 
                 .ORG    $0308           ; Bootloader calls this on reset
 
-RESET           JSR     KBSETUP
-                JSR     SCRNSETUP
+RESET           JSR     SCRNSETUP
                 CLI
 
 NXTCHAR         JSR     RDKEY           ; puts an ascii char in A. If 0, then no key is pressed

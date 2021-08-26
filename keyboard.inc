@@ -1,12 +1,6 @@
     .include "macros.inc"
     
-VIA_PORTB                      = $6000
 VIA_PORTA                      = $6001
-VIA_DDRB                       = $6002
-VIA_DDRA                       = $6003
-VIA_PCR                        = $600c ; peripheral control register
-VIA_IFR                        = $600d ; interrupt flag register
-VIA_IER                        = $600e ; interrupt enable register
 
 KEYB_RELEASE                   = %00000001
 KEYB_SHIFT                     = %00000010
@@ -28,32 +22,6 @@ keyb_flags:          reserve 1
 ;======================= /zero page addresses =======================
 
 keyb_buffer                    = $0200 ; one page for keyboard buffer
-
-KBSETUP:
-    lda #0                         ; set port A as input (for keyboard)
-    sta VIA_DDRA
-    lda #%10010010                 ; enable interrupt on CA1 and CB1
-    sta VIA_IER
-    lda #%00000001                 ; set CA1 as positive active edge
-    sta VIA_PCR
-
-    lda #0
-    sta keyb_rptr
-    sta keyb_wptr
-    sta keyb_flags
-    rts
-
-RDKEY:
-    lda keyb_rptr
-    cmp keyb_wptr
-    beq .no_key
-    ldx keyb_rptr
-    inc keyb_rptr
-    lda keyb_buffer, x
-    rts
-.no_key:
-    lda #0
-    rts
 
 keyboard_interrupt:
     store_registers

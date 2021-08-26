@@ -1,4 +1,5 @@
     .include "macros.inc"
+VIA_PORTB                      = $6000
 
 VDP_VRAM                       = $8000
 VDP_REG                        = $8001
