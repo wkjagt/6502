@@ -1,4 +1,4 @@
-RDKEY           =       $C0E7
+RDKEY           =       $C0C2
 
                 .ORG    $0300           ; Bootloader calls this on IRQ
                 .ORG    $0308           ; Bootloader calls this on reset

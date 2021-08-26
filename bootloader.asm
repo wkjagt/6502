@@ -36,15 +36,7 @@ PROGRAM_START          = $0300
 
   .include "vdp.asm"
 
-reset: 
-                    sei                          ; disable interrupts
-setup_via:          lda #%11111111
-                    sta VIA_DDRA
-                    sta VIA_DDRB
-                    lda #$00
-                    sta VIA_PORTA
-                    sta VIA_PORTB
-
+reset:              sei                          ; disable interrupts
 setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
                     lda #%00011111               ; 1 stop bit, 8 data bits, 19200 baud
@@ -54,20 +46,12 @@ setup_program_ptrs: lda #0                       ; reset counters that count prg
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
 setup_vdp:          jsr vdp_setup
-
-                    lda #$ff                     ; ready light on
-                    sta VIA_PORTB
                     jsr KBSETUP
 
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
-                    lda #$00                     ; ready light off
-                    sta VIA_PORTB                    
                     jsr load_program
-                    lda #$ff                     ; ready light on
-                    sta VIA_PORTB
-
                     jsr $0308                    ; jump over header
                     jmp loop
 
@@ -114,7 +98,7 @@ irq:                pha
 KBSETUP:
     lda #0                         ; set port A as input (for keyboard)
     sta VIA_DDRA
-    lda #%10000010                 ; enable interrupt on CA1 and CB1
+    lda #%10000010                 ; enable interrupt on CA1
     sta VIA_IER
     lda #%00000001                 ; set CA1 as positive active edge
     sta VIA_PCR
