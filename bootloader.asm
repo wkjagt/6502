@@ -30,24 +30,13 @@ keyb_wptr              = $31
 keyb_flags             = $32
 keyb_buffer            = $0200 ; one page for keyboard buffer
 
-
-
-
 PROGRAM_START          = $0300
 
   .org $c000
 
   .include "vdp.asm"
 
-  .macro vdp_write_vram
-  lda #<(\1)
-  sta VDP_REG
-  lda #(VDP_WRITE_VRAM_BIT | >\1) ; see second register write pattern
-  sta VDP_REG
-  .endm
-
 reset: 
-setup:              
                     sei                          ; disable interrupts
 setup_via:          lda #%11111111
                     sta VIA_DDRA
@@ -107,12 +96,25 @@ read_serial_byte:   lda ACIA_STATUS
                     rts
 
 nmi:                rti
-irq:                jsr PROGRAM_START           ; interrupt handler needs to be at the start of the program
+irq:                pha
+                    phy
+                    phx
+
+                    lda VIA_IFR
+                    bit #%10000000      ; Gneral IRQ flag. This is set if any of the specific flags are set
+                    beq .done           ; False: no interrupts on the 6522
+                    bit #%00000010      ; CA2 flag
+                    beq .done
+                    jsr KB_IRQ
+.done
+                    plx
+                    ply
+                    pla
                     rti
 KBSETUP:
     lda #0                         ; set port A as input (for keyboard)
     sta VIA_DDRA
-    lda #%10010010                 ; enable interrupt on CA1 and CB1
+    lda #%10000010                 ; enable interrupt on CA1 and CB1
     sta VIA_IER
     lda #%00000001                 ; set CA1 as positive active edge
     sta VIA_PCR
@@ -198,6 +200,15 @@ KB_IRQ:
     pla
     rts
 
+;========================================================================
+; These two maps map PS/2 scan codes to their respective ASCII codes.
+; Any bytes higher than $7e are ignored for now because there isn't
+; anything I want to use in there for now. All values below $7e that I want
+; to ignore are filled with zeros and are skipped in the keyboard
+; handling routine.
+; The second map is used when the shift key is held on the keyboard. All
+; other control keys (als, control etc etc) are also ignored for now.
+;========================================================================
 keymap: ; scancode to ascii code
   .byte 0,0,0,0,0,0,0,0,0,0,0,0,0," `",0        ; 00-0F     0d: tab
   .byte 0,0,0,0,0,"q1",0,0,0,"zsaw2",0          ; 10-1F

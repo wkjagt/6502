@@ -1,9 +1,6 @@
-RDKEY           =       $C0D0
+RDKEY           =       $C0E7
 
                 .ORG    $0300           ; Bootloader calls this on IRQ
-                JSR     IRQ
-                RTS
-
                 .ORG    $0308           ; Bootloader calls this on reset
 
 RESET           JSR     SCRNSETUP
@@ -14,5 +11,4 @@ NXTCHAR         JSR     RDKEY           ; puts an ascii char in A. If 0, then no
                 JSR     ECHO            ; if there's a key, echo it
                 JMP     NXTCHAR
 
-                .include "interrupts.inc"
                 .include "text_screen.inc"
