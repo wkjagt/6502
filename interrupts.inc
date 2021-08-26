@@ -1,4 +1,5 @@
-VIA_IFR                        = $600d ; interrupt flag register
+VIA_IFR     = $600d ; interrupt flag register
+BK_IRQ      = $C0E1
 
     .include "macros.inc"
 
@@ -23,7 +24,7 @@ IRQ:
 .ca1:
     asl a
     bcc .ca2
-    jsr keyboard_interrupt
+    jsr BK_IRQ
 .ca2:
     asl a
 .done

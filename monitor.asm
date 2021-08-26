@@ -1,4 +1,5 @@
-RDKEY = $C0D0
+RDKEY           =       $C0D0
+
                 .ORG    $0300           ; Bootloader calls this on IRQ
                 JSR     IRQ
                 RTS
@@ -15,4 +16,3 @@ NXTCHAR         JSR     RDKEY           ; puts an ascii char in A. If 0, then no
 
                 .include "interrupts.inc"
                 .include "text_screen.inc"
-                .include "keyboard.inc"
