@@ -234,11 +234,6 @@ KB_IRQ:
     ldx VIA_PORTA                   ; load ps/2 scan code
     txa
 ;==============================================================================
-; TODO: this doesn't seem to be the right place to ignore 0 values, because
-; we haven't even read from the keymap yet. But it seems to work???
-;==============================================================================
-    beq .done                       ; ignore 0 values
-;==============================================================================
 ; Handle special cases that aren't characters (release codes and shift keys)
 ;==============================================================================
     cmp #KEYB_RELEASE_CODE          ; keyboard release code
@@ -272,6 +267,7 @@ KB_IRQ:
 ; haven't been used yet.
 ;==============================================================================
 .push_key:
+    beq .done           ; don't put anything in the buffer if a 0 is found in the keymap
     ldx keyb_wptr
     sta keyb_buffer, x
     inc keyb_wptr
