@@ -44,9 +44,10 @@ SCRNSETUP:
     jsr reset_screen_buffer_rptr
     lda #0
     sta cursor_column
-    lda #1
+    lda #0
     sta cursor_row
     jsr calculate_cursor_pos
+    jsr blink_cursor
     rts
 
 ECHO:
@@ -141,7 +142,6 @@ incr_screen_buffer_wptr:
 .done:
     rts
 
-
 update_vram:
     lda screen_flags
     bit #VIDEO_BUFFER_STALE
@@ -170,17 +170,18 @@ calculate_cursor_pos:
     ; calculation = (row * 40) + column
     ldx #0
 .multiply:
-    ; add 40 to the write pointer for the number of times in the row value
+    cpx cursor_row
+    beq .add
+    inx
     lda screen_buffer_wptr
     clc
-    adc #$28  ; add 40
+    adc #40
     sta screen_buffer_wptr
     lda screen_buffer_wptr + 1
     adc #0    ; add whatever is in the carry flag
     sta screen_buffer_wptr + 1
-    inx
-    cpx cursor_row
     bne .multiply
+.add:
     ; add the column value
     lda screen_buffer_wptr
     clc
@@ -229,7 +230,7 @@ line_feed:
     lda #0
     sta cursor_column
     lda cursor_row
-    cmp #21
+    cmp #22
     beq .scroll
     inc cursor_row
     jmp .done
