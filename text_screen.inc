@@ -198,23 +198,28 @@ scroll_up:
     sei
     jsr reset_screen_buffer_wptr ; start writing at the start of screen buffer
     jsr reset_screen_buffer_rptr
-    ; set read pointer to 40 after screen buffer
+    ; set read pointer to 40 after screen buffer (start of second line)
+    lda #(<screenbuffer)            ; load the LSB of the screenbuffer start address
     clc
-    lda #(<screenbuffer)
-    adc #40
-    sta screen_buffer_rptr
-    lda screen_buffer_rptr + 1
-    adc #0
+    adc #40                         ; add 40 to it, which is the left most position of the 2nd line
+    sta screen_buffer_rptr          ; store that in the read pointer LSB
+    lda screen_buffer_rptr + 1      ; load the MSB of the read pointer
+    adc #0                          ; add the carry flag to it
     sta screen_buffer_rptr + 1
 .loop:
-    lda (screen_buffer_rptr)
-    cmp #END_OF_SCREEN_BUFFER
-    beq .done
-    jsr write_to_buffer
-    jsr incr_screen_buffer_rptr
+    lda (screen_buffer_rptr)        ; load the character that the read pointer points to
+    cmp #END_OF_SCREEN_BUFFER       ; see if it is $FF (one past the end of the screen)
+    beq .done                       ; if it is, we'be read the buffer up to the last line, do nothing else
+    sta (screen_buffer_wptr)
+    jsr incr_screen_buffer_rptr     ; advance both pointers
     jsr incr_screen_buffer_wptr
+
     jmp .loop
 .done:
+    lda screen_flags
+    ora #VIDEO_BUFFER_STALE  ; stale video
+    sta screen_flags
+    jsr update_vram
     cli
     rts
 
