@@ -1,4 +1,6 @@
-; 6522 VIA
+;==============================================================================
+; Addresses for registers on the 6522 VIA
+;==============================================================================
 VIA_PORTB                      = $6000
 VIA_PORTA                      = $6001
 VIA_DDRB                       = $6002
@@ -7,6 +9,23 @@ VIA_PCR                        = $600c ; peripheral control register
 VIA_IFR                        = $600d ; interrupt flag register
 VIA_IER                        = $600e ; interrupt enable register
 
+;==============================================================================
+; Addresses for registers on the 6551 ACIA
+;==============================================================================
+ACIA_START   = $4000
+ACIA_DATA    = ACIA_START + 0
+ACIA_STATUS  = ACIA_START + 1
+ACIA_COMMAND = ACIA_START + 2
+ACIA_CONTROL = ACIA_START + 3
+
+;==============================================================================
+; Constants related to the 6551 ACIA
+;==============================================================================
+ACIA_STATUS_RX_FULL    = 1 << 3
+
+;==============================================================================
+; Constants related to the functioning of the PS/2 keyboard
+;==============================================================================
 KEYB_RELEASE                   = %00000001
 KEYB_SHIFT                     = %00000010
 KEYB_RELEASE_CODE              = $F0
@@ -14,58 +33,86 @@ KEYB_LEFT_SHIFT_CODE           = $12
 KEYB_RIGHT_SHIFT_CODE          = $59
 MAX_SCANCODE                   = $7e
 
-; 6551 ACIA
-ACIA_START   = $4000
-ACIA_DATA    = ACIA_START + 0
-ACIA_STATUS  = ACIA_START + 1
-ACIA_COMMAND = ACIA_START + 2
-ACIA_CONTROL = ACIA_START + 3
-
-ACIA_STATUS_RX_FULL    = 1 << 3
-
-PROGRAM_WRITE_PTR_L    = $0002
-PROGRAM_WRITE_PTR_H    = $0003
+;==============================================================================
+; RAM addresses for keyboard usage
+;==============================================================================
 keyb_rptr              = $30
 keyb_wptr              = $31
 keyb_flags             = $32
 keyb_buffer            = $0200 ; one page for keyboard buffer
 
+;==============================================================================
+; RAM addresses for the 16 bit pointer for writing a program to RAM
+;==============================================================================
+PROGRAM_WRITE_PTR_L    = $0002
+PROGRAM_WRITE_PTR_H    = $0003
+
+;==============================================================================
+; The start of the program in RAM. Used to start writing to, and
+; to jump to once the program is loaded
+;==============================================================================
 PROGRAM_START          = $0300
 
   .org $c000
 
   .include "vdp.asm"
 
-reset:              sei                          ; disable interrupts
-setup_acia:         lda #%11001011               ; No parity, no echo, no interrupt
+reset:              sei
+;==============================================================================
+; Initialize the 6551 ACIA for serial communication
+;==============================================================================
+                    lda #%11001011               ; No parity, no echo, no interrupt
                     sta ACIA_COMMAND
                     lda #%00011111               ; 1 stop bit, 8 data bits, 19200 baud
                     sta ACIA_CONTROL
-setup_program_ptrs: lda #0                       ; reset counters that count prgram length
+;==============================================================================
+; Initialize the program pointers for writing bytes to RAM
+;==============================================================================
+                    lda #0                       ; reset counters that count prgram length
                     sta PROGRAM_WRITE_PTR_L
                     lda #$03
                     sta PROGRAM_WRITE_PTR_H
-setup_vdp:          jsr vdp_setup
+;==============================================================================
+; Initialize the TMS9918A VDP video chip
+;==============================================================================
+                    jsr vdp_setup
+;==============================================================================
+; Initialize the PS/2 keyboard interface
+;==============================================================================
                     jsr KBSETUP
 
+;==============================================================================
+; The main program loop for loading a program into RAM over serial
+; Once the ASCII code for the "l" character (for "load") is received,
+; kick off the load_program routine.
+; When control is returned from that routine, JMP to the program start
+; address.
+;==============================================================================
 loop:               jsr read_serial_byte
                     cmp #"l"
                     bne loop
                     jsr load_program
-                    jsr $0308                    ; jump over header
+                    jsr $0308
                     jmp loop
-
+;==============================================================================
+; The program load routine is a very much simplified implementation of
+; xmodem. It leaves out all error checking, but is otherwise pretty much
+; identical.
+;==============================================================================
 load_program:       
-.header_byte:       jsr read_serial_byte         ; read byte
-                    cmp #$04                     ; EOT
-                    beq .done
-                    ldy #$80                     ; packet size: 128 
-.program_byte:      jsr read_serial_byte
-                    sta (PROGRAM_WRITE_PTR_L)
+.header_byte:       jsr read_serial_byte         ; Read a character over serial
+                    cmp #$04                     ; $04 is the End Of Transmission Character
+                                                 ; and can be received after each packet
+                    beq .done                    ; We're done once that's received.
+                                                 ; The other byte is assumed to be a Start
+                                                 ; of header byte, but we're not checking for it.
+                    ldy #$80                     ; packet size: 128 bytes
+.program_byte:      jsr read_serial_byte         ; This reads one byte into RAM, by using
+                    sta (PROGRAM_WRITE_PTR_L)    ; the pointer we're keeping in the zero page.
                     jsr inc_prgrm_pointer
                     dey
                     beq .header_byte             ; when y == 0, end of packet
-                    jmp .program_byte
+                    jmp .program_byte            ; after loading each packet, check the header byte
 .done:              rts
 
 inc_prgrm_pointer:  inc PROGRAM_WRITE_PTR_L
@@ -73,12 +120,18 @@ inc_prgrm_pointer:  inc PROGRAM_WRITE_PTR_L
                     inc PROGRAM_WRITE_PTR_H
 .done:              rts
 
+;==============================================================================
+; Read one byte from the serial connection provided by the 6551 ACIA
+;==============================================================================
 read_serial_byte:   lda ACIA_STATUS
                     and #ACIA_STATUS_RX_FULL
                     beq read_serial_byte
                     lda ACIA_DATA
                     rts
 
+;==============================================================================
+; Interrupt handlers
+;==============================================================================
 nmi:                rti
 irq:                pha
                     phy
@@ -95,6 +148,13 @@ irq:                pha
                     ply
                     pla
                     rti
+
+;==============================================================================
+; Initialize the PS/2 keyboard interface that uses the 6522 VIA for
+; interrupt handling and data reading. 
+; The PS/2 hardware triggers the CA1 with a positive edge when data is
+; available on port A.
+;==============================================================================
 KBSETUP:
     lda #0                         ; set port A as input (for keyboard)
     sta VIA_DDRA
@@ -102,13 +162,17 @@ KBSETUP:
     sta VIA_IER
     lda #%00000001                 ; set CA1 as positive active edge
     sta VIA_PCR
-
     lda #0
     sta keyb_rptr
     sta keyb_wptr
     sta keyb_flags
     rts
 
+;==============================================================================
+; Read one key from the keyboard buffer into the A register. A is loaded with
+; 0 when no new key is pressed. When a key is pressed, the read pointer is
+; incremented.
+;==============================================================================
 RDKEY:
     lda keyb_rptr
     cmp keyb_wptr
@@ -121,10 +185,20 @@ RDKEY:
     lda #0
     rts
 
+;==============================================================================
+; The keyboard key press handler that is triggered by an IRQ
+;==============================================================================
 KB_IRQ:
     pha
     phy
     phx
+;==============================================================================
+; Check the keyboard flags for the key release flag. If it is set, this means
+; that the previous scan code was for a key release, and the current interrupt
+; signals the scan code for the actual key that was released. If the flag
+; isn't set, go ahead and read the key as usual. If the flag is set, reset it
+; and handle the scan code as a key release.
+;==============================================================================
     lda keyb_flags                  ; read the current keyboard flags
     and #KEYB_RELEASE               ; see if the previous scan code was for a key release 
     beq .read_key                   ; if it isn't, go ahead and read the key
@@ -132,30 +206,58 @@ KB_IRQ:
     eor #KEYB_RELEASE               ; the previous code was a release, so the new code
                                     ; is for the key that's being released.
     sta keyb_flags                  ; Turn off the release flag
+;==============================================================================
+; Read the scan code for the key that was released. If it is for one of the
+; shift keys, it means that shift is no longer being pressed, and we need to
+; handle that. If a different key was released, we ignore it, as we don't
+; (yet) handle any other key combinations.
+;==============================================================================
     lda VIA_PORTA                   ; Read the key that's being released
     cmp #KEYB_LEFT_SHIFT_CODE       ; It's the shift key that was released: handle that case
     beq .shift_up
     cmp #KEYB_RIGHT_SHIFT_CODE
     beq .shift_up
     jmp .done
+;==============================================================================
+; When shift is released, we need to reset the shift flag
+;==============================================================================
 .shift_up:
     lda keyb_flags                  ; turn off the shift flag
     eor #KEYB_SHIFT
     sta keyb_flags
     jmp .done
+;==============================================================================
+; Interpet a scan code other than the code of a released key is received. This
+; block interprets that scan code.
+;==============================================================================
 .read_key:
     ldx VIA_PORTA                   ; load ps/2 scan code
     txa
+;==============================================================================
+; TODO: this doesn't seem to be the right place to ignore 0 values, because
+; we haven't even read from the keymap yet. But it seems to work???
+;==============================================================================
     beq .done                       ; ignore 0 values
+;==============================================================================
+; Handle special cases that aren't characters (release codes and shift keys)
+;==============================================================================
     cmp #KEYB_RELEASE_CODE          ; keyboard release code
     beq .key_release
     cmp #KEYB_LEFT_SHIFT_CODE
     beq .shift_down
     cmp #KEYB_RIGHT_SHIFT_CODE
     beq .shift_down
+;==============================================================================
+; Ignore scan codes above MAX_SCANCODE because there's nothing there we
+; want to use for now.
+;==============================================================================
     cmp #MAX_SCANCODE               ; highest interpreted value
     bcs .done                       ; carry set: >=
-
+;==============================================================================
+; The scan code is for a character. First load the keyboard flags to check
+; the SHIFT flag. If the flag is set, we look up the ASCII code for the
+; character in the shifted map. Otherwise, use the unshifted map.
+;==============================================================================
     lda keyb_flags
     and #KEYB_SHIFT
     bne .shifted_key
@@ -163,16 +265,30 @@ KB_IRQ:
     jmp .push_key
 .shifted_key:
     lda keymap_shifted, x
+;==============================================================================
+; Write the received character to the keyboard buffer, and advance the write
+; pointer. This causes the write pointer to be ahead of the read pointer
+; which will be detected by the routine that checks for new characters that
+; haven't been used yet.
+;==============================================================================
 .push_key:
     ldx keyb_wptr
     sta keyb_buffer, x
     inc keyb_wptr
     jmp .done
+; ==============================================================================
+; Handle the case of the shift key being pressed by setting the shift flag
+; in the keyboard flags.
+; ==============================================================================
 .shift_down:
     lda keyb_flags
     ora #KEYB_SHIFT
     sta keyb_flags
     jmp .done
+; ==============================================================================
+; Handle the case of the release scan code being received because this means
+; that the next scan code identies which key was released.
+; ==============================================================================
 .key_release:
     lda keyb_flags
     ora #KEYB_RELEASE
