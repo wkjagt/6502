@@ -49,7 +49,7 @@ PRG_WPTR  = $0002                       ; The LSB of the program write pointer
 ; The start of the program in RAM. Used to start writing to, and
 ; to jump to once the program is loaded
 ;==============================================================================
-PRG_STRT  = $0300
+PRG_STRT  = $0700
 
   .org $c000
 

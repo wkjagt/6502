@@ -16,6 +16,7 @@ VIDEO_BUFFER_STALE             = %00000010
 END_OF_SCREEN_BUFFER           = $FF
 ENTER                          = $0a
 BACKSP                         = $08
+screenbuffer                   = $0300
 
 ;======================= zero page addresses =======================
 ; Uses $10 - $18
@@ -39,6 +40,7 @@ cursor_row:          reserve 1
 SCRNSETUP:
     lda #0
     sta screen_flags
+    jsr init_screen_buffer
     jsr vdp_initialize_pattern_table
     jsr vdp_enable_display
     jsr reset_screen_buffer_rptr
@@ -48,6 +50,27 @@ SCRNSETUP:
     sta cursor_row
     jsr calculate_cursor_pos
     jsr blink_cursor
+    rts
+
+init_screen_buffer:
+    jsr reset_screen_buffer_wptr
+    ldy #4    ; empty 4 pages (3, 4, 5, 6)
+    ldx #255  ; page length
+.next
+    lda #0    ; fill wil 0s
+    sta (screen_buffer_wptr)
+    jsr incr_screen_buffer_wptr
+    dex
+    bne .next
+    dey
+    bne .next
+.done:
+    lda #<(screenbuffer + 960)
+    sta screen_buffer_wptr
+    lda #>(screenbuffer + 960)
+    sta screen_buffer_wptr + 1
+    lda #END_OF_SCREEN_BUFFER
+    sta (screen_buffer_wptr)
     rts
 
 ECHO:
@@ -372,8 +395,3 @@ vdp_patterns:
 ; non ascii
   .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$00 ; cursor
 vdp_end_patterns:
-
-
-screenbuffer: ; a buffer of ascii codes to print to the screen
-    .blk 24 * 40
-    .byte END_OF_SCREEN_BUFFER ; end of screen, to check when to stop writing to vram

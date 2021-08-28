@@ -1,7 +1,6 @@
 RDKEY           =       $C0C2
 
-                .ORG    $0300           ; Bootloader calls this on IRQ
-                .ORG    $0308           ; Bootloader calls this on reset
+                .ORG    $0700           ; Bootloader calls this on IRQ
 
 RESET           JSR     SCRNSETUP
                 CLI
