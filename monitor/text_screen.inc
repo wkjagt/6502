@@ -16,6 +16,9 @@ ENTER                          = $0a
 BACKSP                         = $08
 ESC                            = $1B
 
+SCREEN_WIDTH                   = 32
+SCREEN_HEIGHT                  = 24
+
 ; LOCATIONS
 screenbuffer                   = $0300
 vdp_patterns                   = $C041
@@ -87,7 +90,7 @@ ECHO:
     beq .esc
     tax
     lda cursor_column
-    cmp #39
+    cmp #SCREEN_WIDTH - 1
     beq .done
     txa
     jsr write_to_buffer
@@ -217,7 +220,7 @@ calculate_cursor_pos:
     inx
     lda screen_buffer_wptr
     clc
-    adc #40
+    adc #SCREEN_WIDTH
     sta screen_buffer_wptr
     lda screen_buffer_wptr + 1
     adc #0    ; add whatever is in the carry flag
@@ -244,7 +247,7 @@ scroll_up:
     ; set read pointer to 40 after screen buffer (start of second line)
     lda #(<screenbuffer)            ; load the LSB of the screenbuffer start address
     clc
-    adc #40                         ; add 40 to it, which is the left most position of the 2nd line
+    adc #SCREEN_WIDTH               ; add 40 to it, which is the left most position of the 2nd line
     sta screen_buffer_rptr          ; store that in the read pointer LSB
     lda screen_buffer_rptr + 1      ; load the MSB of the read pointer
     adc #0                          ; add the carry flag to it
