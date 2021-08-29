@@ -17,9 +17,12 @@ END_OF_SCREEN_BUFFER           = $FF
 ENTER                          = $0a
 BACKSP                         = $08
 ESC                            = $1B
+
+; LOCATIONS
 screenbuffer                   = $0300
-vdp_patterns                   = $C13E
-vdp_end_patterns               = $C43E
+vdp_patterns                   = $C041
+vdp_end_patterns               = $C341
+
 ;======================= zero page addresses =======================
 ; Uses $10 - $18
 ;===================================================================
