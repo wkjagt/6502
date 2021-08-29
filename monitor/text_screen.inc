@@ -18,6 +18,7 @@ ESC                            = $1B
 
 SCREEN_WIDTH                   = 32
 SCREEN_HEIGHT                  = 24
+COLUMN_START                   = 1
 
 ; LOCATIONS
 screenbuffer                   = $0300
@@ -51,7 +52,7 @@ SCRNSETUP:
     jsr vdp_initialize_color_table
     jsr vdp_enable_display
     jsr reset_screen_buffer_rptr
-    lda #0
+    lda #COLUMN_START
     sta cursor_column
     lda #0
     sta cursor_row
@@ -272,7 +273,7 @@ scroll_up:
 line_feed:
     lda #0
     jsr write_to_buffer ; clear cursor
-    lda #0
+    lda #COLUMN_START
     sta cursor_column
     lda cursor_row
     cmp #22
@@ -281,7 +282,7 @@ line_feed:
     jmp .done
 .scroll:
     jsr scroll_up
-    lda #0
+    lda #COLUMN_START
     sta cursor_column
 .done:
     rts
