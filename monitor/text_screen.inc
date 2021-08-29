@@ -1,6 +1,4 @@
     .include "macros.inc"
-VIA_PORTB                      = $6000
-
 VDP_VRAM                       = $8000
 VDP_REG                        = $8001
 VDP_WRITE_VRAM_BIT             = %01000000  ; pattern of second vram address write: 01AAAAAA
@@ -47,6 +45,7 @@ SCRNSETUP:
     sta screen_flags
     jsr init_screen_buffer
     jsr vdp_initialize_pattern_table
+    jsr vdp_initialize_color_table
     jsr vdp_enable_display
     jsr reset_screen_buffer_rptr
     lda #0
@@ -135,13 +134,23 @@ vdp_pattern_table_loop:
     restore_registers
     rts
 
+vdp_initialize_color_table:
+    vdp_write_vram VDP_COLOR_TABLE_BASE
+    ldx #$20
+    lda #$71   ; color
+vdp_color_table_loop:
+    sta VDP_VRAM
+    dex
+    bne vdp_color_table_loop
+    rts
+
 vdp_enable_display:
     lda #$71                               ; fg / bg colours
     sta VDP_REG
     lda #(VDP_REGISTER_BITS | 7)           ; register select (selecting register 1)
     sta VDP_REG
 
-    lda #%11110000                         ; 16k Bl IE M1 M2 0 Siz MAG 
+    lda #%11100000                         ; 16k Bl IE M1 M2 0 Siz MAG 
     sta VDP_REG
     lda #(VDP_REGISTER_BITS | 1)           ; register select (selecting register 1)
     sta VDP_REG
