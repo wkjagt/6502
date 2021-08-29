@@ -16,6 +16,7 @@ VIDEO_BUFFER_STALE             = %00000010
 END_OF_SCREEN_BUFFER           = $FF
 ENTER                          = $0a
 BACKSP                         = $08
+ESC                            = $1B
 screenbuffer                   = $0300
 vdp_patterns                   = $C13E
 vdp_end_patterns               = $C43E
@@ -80,6 +81,8 @@ ECHO:
     beq .enter
     cmp #BACKSP
     beq .backspace
+    cmp #ESC
+    beq .esc
     tax
     lda cursor_column
     cmp #39
@@ -97,6 +100,9 @@ ECHO:
     lda cursor_column
     beq .done
     dec cursor_column
+    jmp .done
+.esc:
+    jsr SCRNSETUP
 .done:
     jsr blink_cursor
     rts    
