@@ -11,7 +11,6 @@ VDP_SPRITE_ATTR_TABLE_BASE     = $0100
 
 CURSOR_ON                      = %00000001
 VIDEO_BUFFER_STALE             = %00000010
-END_OF_SCREEN_BUFFER           = $FF
 ENTER                          = $0a
 BACKSP                         = $08
 ESC                            = $1B
@@ -63,23 +62,16 @@ CLRSCRN:
 
 init_screen_buffer:
     jsr reset_screen_buffer_wptr
-    ldy #4    ; empty 4 pages (3, 4, 5, 6)
+    ldy #3    ; empty 3 pages of RAM to hold the screen buffer (3, 4, 5)
     ldx #255  ; page length
 .next
-    lda #0    ; fill wil 0s
+    lda #0    ; fill with 0s
     sta (screen_buffer_wptr)
     jsr incr_screen_buffer_wptr
     dex
     bne .next
     dey
     bne .next
-.done:
-    lda #<(screenbuffer + 960)
-    sta screen_buffer_wptr
-    lda #>(screenbuffer + 960)
-    sta screen_buffer_wptr + 1
-    lda #END_OF_SCREEN_BUFFER
-    sta (screen_buffer_wptr)
     rts
 
 ECHO:
@@ -191,21 +183,39 @@ incr_screen_buffer_wptr:
     rts
 
 update_vram:
+;==============================================================================
+; Only update if we know VRAM is stale
+;==============================================================================
     lda screen_flags
     bit #VIDEO_BUFFER_STALE
     beq .done
+;==============================================================================
+; Set flag to "not stale"
+;==============================================================================
     and #(~VIDEO_BUFFER_STALE)
     sta screen_flags
+;==============================================================================
+; Start at beginning of buffer
+;==============================================================================
     jsr reset_screen_buffer_rptr
     vdp_write_vram VDP_NAME_TABLE_BASE
 .screenbuffer_loop:
     lda (screen_buffer_rptr)
-    cmp #END_OF_SCREEN_BUFFER
-    beq .done
+;==============================================================================
+; The first character that's supported is ASCII char with code $21, so
+; sutracting $20 will give us the correct offset into the pattern table
+;==============================================================================
     sec
     sbc #$20                                ; ascii characters in VDP 
     sta VDP_VRAM
     jsr incr_screen_buffer_rptr
+;==============================================================================
+; Once the high byte of the read pointer goes into the 6th page
+; of the buffer, we know we're done.
+;==============================================================================
+    lda screen_buffer_rptr + 1
+    cmp #6
+    beq .done
     jmp .screenbuffer_loop
 .done
     rts
@@ -242,7 +252,7 @@ calculate_cursor_pos:
     rts
 
 scroll_up:
-    ; starting at position 40, copy all characters to 40 positions to
+    ; starting at position 32, copy all characters to 32 positions to
     ; the left in the screenbuffer
     sei
     jsr reset_screen_buffer_wptr ; start writing at the start of screen buffer
@@ -256,9 +266,10 @@ scroll_up:
     adc #0                          ; add the carry flag to it
     sta screen_buffer_rptr + 1
 .loop:
+    lda screen_buffer_rptr + 1
+    cmp #6
+    beq .done
     lda (screen_buffer_rptr)        ; load the character that the read pointer points to
-    cmp #END_OF_SCREEN_BUFFER       ; see if it is $FF (one past the end of the screen)
-    beq .done                       ; if it is, we'be read the buffer up to the last line, do nothing else
     sta (screen_buffer_wptr)
     jsr incr_screen_buffer_rptr     ; advance both pointers
     jsr incr_screen_buffer_wptr
