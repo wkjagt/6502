@@ -1,5 +1,5 @@
-VDP_VRAM               = $8000
-VDP_REG                = $8001
+VDP_VRAM               = $4400
+VDP_REG                = $4401
 VDP_WRITE_VRAM_BIT     = %01000000  ; pattern of second vram address write: 01AAAAAA
 VDP_REGISTER_BITS      = %10000000  ; pattern of second register write: 10000RRR
 

@@ -12,10 +12,10 @@ IO_IER   = $600e                        ; Interrupt enable register
 ;==============================================================================
 ; Addresses for registers on the 6551 ACIA
 ;==============================================================================
-SER_DATA = $4000                        ; Data regiter
-SER_ST   = $4001                        ; Status register
-SER_CMD  = $4002                        ; Command register
-SER_CTL  = $4003                        ; Control register
+SER_DATA = $4800                        ; Data regiter
+SER_ST   = $4801                        ; Status register
+SER_CMD  = $4802                        ; Command register
+SER_CTL  = $4803                        ; Control register
 
 ;==============================================================================
 ; Constants related to the 6551 ACIA
@@ -51,11 +51,18 @@ PRG_WPTR  = $0002                       ; The LSB of the program write pointer
 ;==============================================================================
 PRG_STRT  = $0700
 
-  .org $c000
+  .org $8000
 
   .include "vdp.asm"
 
 RESET:          sei
+;==============================================================================
+; Sign of life somewhere on PORT B (for an LED)
+;==============================================================================
+                LDA     #$FF
+                STA     IO_DDRB
+                LDA     #$FF
+                STA     IO_PORTB
 ;==============================================================================
 ; Initialize the 6551 ACIA for serial communication
 ;==============================================================================

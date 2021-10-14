@@ -1,13 +1,19 @@
-RDKEY           =       $C3C2
+RDKEY           =       $83CC
+SER_BYTE        =       $8393
+IO_PORTB        =       $6000           ; Data port B
+IO_PORTA        =       $6001           ; Data port A
+IO_DDRB         =       $6002           ; Data direction of port B
+IO_DDRA         =       $6003           ; Data direction of port A
 
-                .ORG    $0700           ; Bootloader calls this on IRQ
+LED_STATE       =       $200
 
-RESET           JSR     SCRNSETUP
-                CLI
+                .ORG    $0700
 
-NXTCHAR         JSR     RDKEY           ; puts an ascii char in A. If 0, then no key is pressed
-                BEQ     NXTCHAR         ; 0 in A means no character from keyboard
-                JSR     ECHO            ; if there's a key, echo it
+START           JSR     SCRNSETUP
+
+NXTCHAR         JSR     SER_BYTE
+                JSR     ECHO
+                CMP     #ENTER
                 JMP     NXTCHAR
 
                 .include "text_screen.inc"
