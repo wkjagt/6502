@@ -1,71 +1,85 @@
 ; SAVE "HELLO WORLD" TO EEPROM AND READ IT BACK
 
-BYTE_TO_TRANSMIT =      $00         ; address used for shifting bytes
-RECEIVED_BYTE    =      $01         ; address used to shift reveived bits into
-LAST_ACK_BIT     =      $06
-SER_DATA         =      $4800       ; Data register
-SER_ST           =      $4801       ; Status register
-SER_CMD          =      $4802       ; Command register
-SER_CTL          =      $4803       ; Control register
-SER_RXFL         =      %00001000   ; Serial Receive full bit
-PORTA            =      $6001       ; Data port A
-PORTA_DDR        =      $6003       ; Data direction of port A
+BYTE_OUT        =       $00         ; address used for shifting bytes
+BYTE_IN         =       $01         ; address used to shift reveived bits into
+LAST_ACK_BIT    =       $06
+SER_DATA        =       $4800       ; Data register
+SER_ST          =       $4801       ; Status register
+SER_CMD         =       $4802       ; Command register
+SER_CTL         =       $4803       ; Control register
+SER_RXFL        =       %00001000   ; Serial Receive full bit
+PORTA           =       $6001       ; Data port A
+PORTA_DDR       =       $6003       ; Data direction of port A
+
+DATA_PIN        =       %10            
+CLOCK_PIN       =       %01
+
+EEPROM_CMD      =       %10100000
+WRITE_MODE      =       0
+READ_MODE       =       1
+BLOCK0          =       %0000
+BLOCK1          =       %1000
+DEVICE0         =       %000
+DEVICE1         =       %010
+DEVICE2         =       %100
+DEVICE3         =       %110
 
                 .ORG    $0700
 
 ; ========================= INITIALIZE ===========================
-                sei             ; Disable interrupts
-                lda     #"3"
+                sei                     ; Disable interrupts
+                lda     #$0a            ; new line for debugging
                 jsr     write_to_terminal
 
-                lda     #$ff
+                ; set pins 0 and 1 to outputs
+                lda     PORTA_DDR
+                ora     #(DATA_PIN | CLOCK_PIN)
                 sta     PORTA_DDR
 
 ; ========================= WRITE TO EEPROM ===========================
-
                 jsr     start_condition
-                jsr     set_write_mode
+                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+                jsr     transmit_byte
                 jsr     set_address
 ; 7. TRANSMIT A BYTE
-                lda     #"@"            ; random test charachter
-                sta     BYTE_TO_TRANSMIT
+                lda     #"@"            ; random test charachter we want to get back
                 jsr     transmit_byte
 
                 jsr     stop_condition
 ; ========================= ACKNOWLEDGE POLL ===========================
 ack_loop:
                 jsr     start_condition
-                jsr     set_write_mode
+                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+                jsr     transmit_byte
                 ; read ack bit
                 lda     LAST_ACK_BIT
                 bne     ack_loop
 ; ========================= READ FROM EEPROM ===========================
 
                 jsr     start_condition
-                jsr     set_write_mode  ; write mode is used to set the address pointer
+                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+                jsr     transmit_byte
                 jsr     set_address
                 jsr     start_condition ; random read mode requires two start conditions
-                jsr     set_read_mode
-                jsr     receive_byte    ; this should receive the byte in RECEIVED_BYTE
+                lda     #(EEPROM_CMD | READ_MODE | DEVICE0 | BLOCK0)
+                jsr     transmit_byte
+                jsr     receive_byte    ; this should receive the byte in BYTE_IN
                 jsr     stop_condition
 
-                lda     RECEIVED_BYTE
+                lda     BYTE_IN
                 jsr     write_to_terminal
 
                 rts
 
 start_condition:
-; 1. DEACTIVATE BUS
-                lda     #%00000011      ; clock and data high
+                ; 1. DEACTIVATE BUS
+                lda     PORTA
+                ora     #(DATA_PIN | CLOCK_PIN)      ; clock and data high
                 sta     PORTA
-
-; 2. START CONDITION
-                ; clock stays high, data goes low
-                and     #%11111110
+                ; 2. START CONDITION
+                and     #%11111110      ; clock stays high, data goes low
                 sta     PORTA
-
-                ; then pull clock low
-                and     #%11111101
+                and     #%11111101      ; then pull clock low
                 sta     PORTA
                 rts
 
@@ -79,35 +93,24 @@ stop_condition:
                 sta     PORTA
                 rts
 
-set_write_mode:
-                lda     #%10100000      ; block zero CS1: 0, CS2: 0, Write
-                sta     BYTE_TO_TRANSMIT
-                jsr     transmit_byte
-                rts
-
-set_read_mode:
-                lda     #%10100001      ; block zero CS1: 0, CS2: 0, READ
-                sta     BYTE_TO_TRANSMIT
-                jsr     transmit_byte
-                rts
-
 set_address:
                 lda     #0              ; for testing, start at address 0
-                sta     BYTE_TO_TRANSMIT
                 jsr     transmit_byte   ; high address byte
+                lda     #0              ; for testing, start at address 0
                 jsr     transmit_byte   ; low address byte
                 rts
 
 ; TRANSMIT BYTE ROUTINE
 transmit_byte:
+                sta     BYTE_OUT
                 ldy     #8
 .transmit_loop:
                 ; Set next byte on bus while clock is still low
-                asl     BYTE_TO_TRANSMIT; shift next bit into carry
+                asl     BYTE_OUT        ; shift next bit into carry
                 rol     A               ; shift carry into bit 0 of A
                 and     #%11111101      ; make sure clock is low when placing the bit on the bus
                 sta     PORTA
-                jsr     clock_high
+                jsr     clock_high      ; toggle clock to strobe it into the eeprom
                 jsr     clock_low
 
                 dey
@@ -138,7 +141,7 @@ receive_byte:
                 jsr     clock_high
                 lda     PORTA           ; the eeprom should output the next bit on the data line
                 lsr     A               ; shift the reveived bit onto the carry flag
-                rol     RECEIVED_BYTE   ; shift the received bit into the the received byte
+                rol     BYTE_IN         ; shift the received bit into the the received byte
                 jsr     clock_low
                 
                 dey
@@ -156,8 +159,6 @@ clock_low:
                 and     #%11111101      ; clock low
                 sta     PORTA
                 rts
-
-
 
 write_to_terminal:
                 PHY
