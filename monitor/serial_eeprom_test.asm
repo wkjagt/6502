@@ -41,16 +41,16 @@ ack_loop:
                 bne     ack_loop
 ; ========================= READ FROM EEPROM ===========================
 
-                ; jsr     start_condition
-                ; jsr     set_write_mode  ; write mode is used to set the address pointer
-                ; jsr     set_address
-                ; jsr     start_condition ; random read mode requires two start conditions
-                ; jsr     set_read_mode
-                ; jsr     receive_byte    ; this should receive the byte in RECEIVED_BYTE
-                ; jsr     stop_condition
+                jsr     start_condition
+                jsr     set_write_mode  ; write mode is used to set the address pointer
+                jsr     set_address
+                jsr     start_condition ; random read mode requires two start conditions
+                jsr     set_read_mode
+                jsr     receive_byte    ; this should receive the byte in RECEIVED_BYTE
+                jsr     stop_condition
 
-                ; lda     RECEIVED_BYTE
-                ; jsr     write_to_terminal
+                lda     RECEIVED_BYTE
+                jsr     write_to_terminal
 
                 rts
 
@@ -139,7 +139,7 @@ receive_byte:
                 lda     PORTA           ; the eeprom should output the next bit on the data line
                 lsr     A               ; shift the reveived bit onto the carry flag
                 rol     RECEIVED_BYTE   ; shift the received bit into the the received byte
-                jsr     clock_high
+                jsr     clock_low
                 
                 dey
                 bne .receive_loop
