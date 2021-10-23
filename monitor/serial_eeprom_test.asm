@@ -2,6 +2,7 @@
 
 BYTE_TO_TRANSMIT =      $00         ; address used for shifting bytes
 RECEIVED_BYTE    =      $01         ; address used to shift reveived bits into
+LAST_ACK_BIT     =      $06
 SER_DATA         =      $4800       ; Data register
 SER_ST           =      $4801       ; Status register
 SER_CMD          =      $4802       ; Command register
@@ -31,7 +32,13 @@ PORTA_DDR        =      $6003       ; Data direction of port A
                 jsr     transmit_byte
 
                 jsr     stop_condition
-                rts
+; ========================= ACKNOWLEDGE POLL ===========================
+ack_loop:
+                jsr     start_condition
+                jsr     set_write_mode
+                ; read ack bit
+                lda     LAST_ACK_BIT
+                bne     ack_loop
 ; ========================= READ FROM EEPROM ===========================
 
                 ; jsr     start_condition
@@ -45,7 +52,7 @@ PORTA_DDR        =      $6003       ; Data direction of port A
                 ; lda     RECEIVED_BYTE
                 ; jsr     write_to_terminal
 
-                ; rts
+                rts
 
 start_condition:
 ; 1. DEACTIVATE BUS
@@ -70,7 +77,6 @@ stop_condition:
                 lda     PORTA
                 ora     #%00000001      ; data high
                 sta     PORTA
-                jsr     clock_low
                 rts
 
 set_write_mode:
@@ -113,9 +119,12 @@ transmit_byte:
                 and     #%11111110      ; set data line as input to receive ack
                 sta     PORTA_DDR
                 jsr     clock_high
+                lda     PORTA
+                and     #%00000001      ; only save last bit
+                sta     LAST_ACK_BIT
                 jsr     clock_low
                 lda     PORTA_DDR
-                ora     #%00000001      ; set data line as input to receive ack
+                ora     #%00000001      ; set data line back to output
                 sta     PORTA_DDR
                 rts
 
