@@ -37,23 +37,29 @@ DEVICE3         =       %110
                 sta     PORTA_DDR
 
 ; ========================= WRITE TO EEPROM ===========================
-                jsr     start_condition
-                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-                jsr     transmit_byte
-                jsr     set_address
-; 7. TRANSMIT A BYTE
-                lda     #"@"            ; random test charachter we want to get back
-                jsr     transmit_byte
+;                 jsr     start_condition
+;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+;                 jsr     transmit_byte
+;                 jsr     set_address
+; ; 7. TRANSMIT A BYTE
+;                 ldy     #$40
+; write_loop:
+;                 iny
+;                 tya
+;                 ; jsr     write_to_terminal
+;                 jsr     transmit_byte
+;                 cmp     #$5A
+;                 bne     write_loop
 
-                jsr     stop_condition
-; ========================= ACKNOWLEDGE POLL ===========================
-ack_loop:
-                jsr     start_condition
-                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-                jsr     transmit_byte
-                ; read ack bit
-                lda     LAST_ACK_BIT
-                bne     ack_loop
+;                 jsr     stop_condition
+; ; ========================= ACKNOWLEDGE POLL ===========================
+; ack_loop:
+;                 jsr     start_condition
+;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+;                 jsr     transmit_byte
+;                 ; read ack bit
+;                 lda     LAST_ACK_BIT
+;                 bne     ack_loop
 ; ========================= READ FROM EEPROM ===========================
 
                 jsr     start_condition
@@ -63,11 +69,16 @@ ack_loop:
                 jsr     start_condition ; random read mode requires two start conditions
                 lda     #(EEPROM_CMD | READ_MODE | DEVICE0 | BLOCK0)
                 jsr     transmit_byte
-                jsr     receive_byte    ; this should receive the byte in BYTE_IN
-                jsr     stop_condition
 
+                ldx     #26
+receive_loop:
+                jsr     receive_byte    ; this receives the byte in BYTE_IN
+                jsr     stop_condition
                 lda     BYTE_IN
                 jsr     write_to_terminal
+
+                dex
+                bne     receive_loop
 
                 rts
 
@@ -102,6 +113,8 @@ set_address:
 
 ; TRANSMIT BYTE ROUTINE
 transmit_byte:
+                pha
+                phy
                 sta     BYTE_OUT
                 ldy     #8
 .transmit_loop:
@@ -129,6 +142,8 @@ transmit_byte:
                 lda     PORTA_DDR
                 ora     #%00000001      ; set data line back to output
                 sta     PORTA_DDR
+                ply
+                pla
                 rts
 
 
@@ -145,7 +160,23 @@ receive_byte:
                 jsr     clock_low
                 
                 dey
-                bne .receive_loop
+                bne     .receive_loop
+
+                ; ack the reception
+                lda     PORTA_DDR
+                ora     #%00000001      ; set data line to output
+                sta     PORTA_DDR
+                
+                lda     PORTA
+                and     #%11111110      ; set data line low to ack
+                sta     PORTA
+
+                jsr     clock_high
+                jsr     clock_low
+
+                lda     PORTA_DDR
+                and     #%11111110      ; set data line back to input
+                sta     PORTA_DDR
 
                 rts
 
