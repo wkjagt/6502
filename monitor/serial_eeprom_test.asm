@@ -42,8 +42,36 @@ DEVICE3         =       %110
 
 
 
+;                CALL WRITE SEQUENVE ROUTINE
+;                 ; arg: block / device
+;                 lda     #%000           ; block 1, device 0
+;                 sta     ARGS
+;                 ; arg: target high address
+;                 lda     #0              ; target address high byte
+;                 sta     ARGS+1
+;                 ; arg: target low address
+;                 lda     #0              ; target address low byte
+;                 sta     ARGS+2
+
+;                 ; arg: address of start of string
+;                 lda     #<text          ; low byte of address of first byte
+;                 sta     ARGS+3
+;                 lda     #>text          ; high byte of address of first byte
+;                 sta     ARGS+4          
+
+;                 ; arg: string length
+;                 lda     #21             ; number of bytes to write
+;                 sta     ARGS+5
+
+;                 jsr     write_sequence
+;                 rts
+; text:
+;                 .asciiz "This is a third test"
+
+
+;=============== CALL READ SEQUENCE ROUTINE ===========
                 ; arg: block / device
-                lda     #%100           ; block 1, device 0
+                lda     #%000           ; block 1, device 0
                 sta     ARGS
                 ; arg: target high address
                 lda     #0              ; target address high byte
@@ -52,20 +80,25 @@ DEVICE3         =       %110
                 lda     #0              ; target address low byte
                 sta     ARGS+2
 
-                ; arg: address of start of string
-                lda     #<text          ; low byte of address of first byte
+                ; arg: address to write string to
+                lda     #0          ; low byte of address of first byte
                 sta     ARGS+3
-                lda     #>text          ; high byte of address of first byte
+                lda     #2          ; high byte of address of first byte
                 sta     ARGS+4          
 
                 ; arg: string length
                 lda     #21             ; number of bytes to write
                 sta     ARGS+5
 
-                jsr     write_sequence
+                jsr     read_sequence
+
+
+                ; lda     #$ff
+                ; sta     PORTA_DDR
+                ; sta     PORTA
+
                 rts
-text:
-                .asciiz "This is a third test"
+
 
 write_sequence:
                 jsr     start_condition
@@ -90,6 +123,9 @@ write_sequence:
                 bne     .byte_loop
                 jsr     stop_condition
                 rts
+
+
+
 ; ========================= ACKNOWLEDGE POLL ===========================
 ; ack_loop:
 ;                 jsr     start_condition
@@ -100,25 +136,82 @@ write_sequence:
 ;                 bne     ack_loop
 ; ; ========================= READ FROM EEPROM ===========================
 
-;                 jsr     start_condition
-;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-;                 jsr     transmit_byte
-;                 jsr     set_address
-;                 jsr     start_condition ; random read mode requires two start conditions
-;                 lda     #(EEPROM_CMD | READ_MODE | DEVICE0 | BLOCK0)
-;                 jsr     transmit_byte
 
-;                 ldx     #14
-; receive_loop:
-;                 jsr     receive_byte    ; this receives the byte in BYTE_IN
-;                 jsr     stop_condition
-;                 lda     BYTE_IN
-;                 jsr     write_to_terminal
 
-;                 dex
-;                 bne     receive_loop
 
-;                 rts
+read_sequence:
+                ; send start condition
+                jsr     start_condition
+                ; send block / device / write mode
+                lda     ARGS            ; block / device
+                asl                     
+                sta     ARGS
+                lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     ARGS
+                jsr     transmit_byte   ; send command to EEPROM
+
+                ; send address
+                lda     ARGS+1
+                ldx     ARGS+2
+                jsr     set_address     ; pulls two bytes from the stack
+
+                ; send start condition
+                jsr     start_condition
+
+                ; send block / device / read mode
+                lda     #(EEPROM_CMD | READ_MODE)
+                ora     ARGS
+                jsr     transmit_byte   ; send command to EEPROM
+
+                ; set data pin as input
+                lda     PORTA_DDR
+                and     #%11111110      ; data direction to input on the data line
+                sta     PORTA_DDR
+
+                ldx     #0              ; byte counter, counts up to length in ARGS+5
+.byte_loop:
+                ldy     #8              ; bit counter, counts down to 0
+.bit_loop:
+                jsr     clock_high
+                lda     PORTA           ; the eeprom should output the next bit on the data line
+                lsr     A               ; shift the reveived bit onto the carry flag
+                rol     BYTE_IN         ; shift the received bit into the the received byte
+                jsr     clock_low
+                
+                dey
+                bne     .bit_loop
+
+                lda     BYTE_IN
+                jsr     write_to_terminal
+
+                inx
+                cpx     ARGS+5
+                beq     .done           ; no ack for last byte
+
+                ; ack the reception of the byte
+                lda     PORTA_DDR
+                ora     #%00000001      ; set data line to output
+                sta     PORTA_DDR
+
+                lda     PORTA
+                and     #%11111110      ; set data line low to ack
+                sta     PORTA
+
+                jsr     clock_high
+                jsr     clock_low
+
+                lda     PORTA_DDR
+                and     #%11111110      ; set data line back to input
+                sta     PORTA_DDR
+                jmp     .byte_loop
+.done:
+                ; temp: set back to outputs
+                lda     #$ff
+                sta     PORTA_DDR
+                sta     PORTA
+
+                jsr     stop_condition
+                rts
 
 start_condition:
                 ; 1. DEACTIVATE BUS
@@ -182,40 +275,6 @@ transmit_byte:
                 sta     PORTA_DDR
                 ply
                 pla
-                rts
-
-
-receive_byte:
-                lda     PORTA_DDR
-                and     #%11111110      ; data direction to input on the data line
-                sta     PORTA_DDR
-                ldy     #8
-.receive_loop:
-                jsr     clock_high
-                lda     PORTA           ; the eeprom should output the next bit on the data line
-                lsr     A               ; shift the reveived bit onto the carry flag
-                rol     BYTE_IN         ; shift the received bit into the the received byte
-                jsr     clock_low
-                
-                dey
-                bne     .receive_loop
-
-                ; ack the reception
-                lda     PORTA_DDR
-                ora     #%00000001      ; set data line to output
-                sta     PORTA_DDR
-                
-                lda     PORTA
-                and     #%11111110      ; set data line low to ack
-                sta     PORTA
-
-                jsr     clock_high
-                jsr     clock_low
-
-                lda     PORTA_DDR
-                and     #%11111110      ; set data line back to input
-                sta     PORTA_DDR
-
                 rts
 
 clock_high:    ; toggle clock from high to low to strobe the bit into the eeprom
