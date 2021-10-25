@@ -15,8 +15,8 @@ SER_RXFL        =       %00001000   ; Serial Receive full bit
 PORTA           =       $6001       ; Data port A
 PORTA_DDR       =       $6003       ; Data direction of port A
 
-DATA_PIN        =       %10            
-CLOCK_PIN       =       %01
+DATA_PIN        =       %01            
+CLOCK_PIN       =       %10
 
 EEPROM_CMD      =       %10100000
 WRITE_MODE      =       0
@@ -42,36 +42,36 @@ DEVICE3         =       %110
 
 
 
-               CALL WRITE SEQUENVE ROUTINE
+            ;    CALL WRITE SEQUENCE ROUTINE
                 ; arg: block / device
-                lda     #%000           ; block 1, device 0
-                sta     ARGS
-                ; arg: target high address
-                lda     #0              ; target address high byte
-                sta     ARGS+1
-                ; arg: target low address
-                lda     #0              ; target address low byte
-                sta     ARGS+2
+;                 lda     #%000           ; BDD
+;                 sta     ARGS
+;                 ; arg: target high address
+;                 lda     #0              ; target address high byte
+;                 sta     ARGS+1
+;                 ; arg: target low address
+;                 lda     #0              ; target address low byte
+;                 sta     ARGS+2
 
-                ; arg: address of start of string
-                lda     #<text          ; low byte of address of first byte
-                sta     ARGS+3
-                lda     #>text          ; high byte of address of first byte
-                sta     ARGS+4          
+;                 ; arg: address of start of string
+;                 lda     #<text          ; low byte of address of first byte
+;                 sta     ARGS+3
+;                 lda     #>text          ; high byte of address of first byte
+;                 sta     ARGS+4          
 
-                ; arg: string length
-                lda     #21             ; number of bytes to write
-                sta     ARGS+5
+;                 ; arg: string length
+;                 lda     #7             ; number of bytes to write
+;                 sta     ARGS+5
 
-                jsr     write_sequence
-                rts
-text:
-                .asciiz "This is a third test"
+;                 jsr     write_sequence
+;                 rts
+; text:
+;                 .asciiz "BLOCK 0"
 
 
 ;=============== CALL READ SEQUENCE ROUTINE ===========
                 ; arg: block / device
-                lda     #%000           ; block 1, device 0
+                lda     #%000           ; BDD
                 sta     ARGS
                 ; arg: target high address
                 lda     #0              ; target address high byte
@@ -87,13 +87,25 @@ text:
                 sta     ARGS+4          
 
                 ; arg: string length
-                lda     #21             ; number of bytes to write
+                lda     #7             ; number of bytes to read
                 sta     ARGS+5
 
                 jsr     read_sequence
                 rts
 
+;=================================================================================
+;               ROUTINES
+;=================================================================================
 
+;=================================================================================
+; Write a sequence of bytes to the EEPROM
+; Args:
+;   - ARGS+0: Block / device address. Three bits: 00000BDD
+;   - ARGS+1: High byte of target address on the EEPROM
+;   - ARGS+2: Low byte of target address on the EEPROM
+;   - ARGS+3: Low byte of vector pointing to first byte to transmit
+;   - ARGS+4: High byte of vector pointing to first byte to transmit
+;   - ARGS+5: Number of bytes to write (max: 128)
 write_sequence:
                 jsr     start_condition
                 lda     ARGS            ; block / device
@@ -119,20 +131,15 @@ write_sequence:
                 rts
 
 
-
-; ========================= ACKNOWLEDGE POLL ===========================
-; ack_loop:
-;                 jsr     start_condition
-;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-;                 jsr     transmit_byte
-;                 ; read ack bit
-;                 lda     LAST_ACK_BIT
-;                 bne     ack_loop
-; ; ========================= READ FROM EEPROM ===========================
-
-
-
-
+;=================================================================================
+; Read a sequence of bytes from the EEPROM
+; Args:
+;   - ARGS+0: Block / device address. Three bits: 00000BDD
+;   - ARGS+1: High byte of target address on the EEPROM
+;   - ARGS+2: Low byte of target address on the EEPROM
+;   - ARGS+3: Low byte of vector pointing to where to write the first byte
+;   - ARGS+4: High byte of vector pointing to where to write the first byte
+;   - ARGS+5: Number of bytes to read
 read_sequence:
                 ; send start condition
                 jsr     start_condition
@@ -183,60 +190,96 @@ read_sequence:
                 beq     .done           ; no ack for last byte
 
                 ; ack the reception of the byte
-                lda     PORTA_DDR
-                ora     #%00000001      ; set data line to output
-                sta     PORTA_DDR
+                jsr     data_out
 
                 lda     PORTA
-                and     #%11111110      ; set data line low to ack
+                and     #~DATA_PIN      ; set data line low to ack
                 sta     PORTA
 
                 jsr     clock_high
                 jsr     clock_low
 
-                lda     PORTA_DDR
-                and     #%11111110      ; set data line back to input
-                sta     PORTA_DDR
+                jsr     data_in
                 jmp     .byte_loop
 .done:
                 ; temp: set back to outputs
-                lda     #$ff
-                sta     PORTA_DDR
-                sta     PORTA
+                jsr     data_out
 
                 jsr     stop_condition
                 rts
 
+; ========================= ACKNOWLEDGE POLL ===========================
+; ack_loop:
+;                 jsr     start_condition
+;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+;                 jsr     transmit_byte
+;                 ; read ack bit
+;                 lda     LAST_ACK_BIT
+;                 bne     ack_loop
+; ; ========================= READ FROM EEPROM ===========================
+
+
+;=================================================================================
+;               PRIVATE ROUTINES
+;=================================================================================
+
+;=================================================================================
+; Send the start condition to the EEPROM
 start_condition:
                 ; 1. DEACTIVATE BUS
                 lda     PORTA
                 ora     #(DATA_PIN | CLOCK_PIN)      ; clock and data high
                 sta     PORTA
                 ; 2. START CONDITION
-                and     #%11111110      ; clock stays high, data goes low
+                and     #~DATA_PIN      ; clock stays high, data goes low
                 sta     PORTA
-                and     #%11111101      ; then pull clock low
+                and     #~CLOCK_PIN     ; then pull clock low
                 sta     PORTA
                 rts
 
+;=================================================================================
+; Send the stop condition to the EEPROM
 stop_condition:
                 lda     PORTA
-                and     #%11111110      ; data low
+                and     #~DATA_PIN      ; data low
                 sta     PORTA
                 jsr     clock_high      ; clock high
                 lda     PORTA
-                ora     #%00000001      ; data high
+                ora     #DATA_PIN       ; data high
                 sta     PORTA
                 rts
 
-; a: high byte, x: low byte
+;=================================================================================
+; Set the data line as input
+data_in:
+                lda     PORTA_DDR
+                and     #~DATA_PIN      ; set data line back to input
+                sta     PORTA_DDR
+                rts
+
+;=================================================================================
+; Set the data line as input
+data_out:
+                lda     PORTA_DDR
+                ora     #DATA_PIN       ; set data line to output
+                sta     PORTA_DDR
+                rts
+
+;=================================================================================
+; Set the internal address pointer of the EEPROM
+; Args:
+;   - A: high byte
+;   - X: low byte
 set_address:    
                 jsr     transmit_byte   ; high address byte
                 txa                     ; low address byte from x
                 jsr     transmit_byte   ; low address byte
                 rts
 
-; TRANSMIT BYTE ROUTINE
+;=================================================================================
+; Transmit one byte to the EEPROM
+; Args:
+;   - A: the byte to transmit
 transmit_byte:
                 pha
                 phy
@@ -246,7 +289,7 @@ transmit_byte:
                 ; Set next byte on bus while clock is still low
                 asl     BYTE_OUT        ; shift next bit into carry
                 rol     A               ; shift carry into bit 0 of A
-                and     #%11111101      ; make sure clock is low when placing the bit on the bus
+                and     #~CLOCK_PIN     ; make sure clock is low when placing the bit on the bus
                 sta     PORTA
                 jsr     clock_high      ; toggle clock to strobe it into the eeprom
                 jsr     clock_low
@@ -257,31 +300,38 @@ transmit_byte:
                 ; After each byte, the EEPROM expects a clock cycle during which 
                 ; it pulls the data line low to signal that the byte was received
                 lda     PORTA_DDR
-                and     #%11111110      ; set data line as input to receive ack
+                and     #~DATA_PIN      ; set data line as input to receive ack
                 sta     PORTA_DDR
                 jsr     clock_high
                 lda     PORTA
-                and     #%00000001      ; only save last bit
+                and     #DATA_PIN       ; only save last bit
                 sta     LAST_ACK_BIT
                 jsr     clock_low
                 lda     PORTA_DDR
-                ora     #%00000001      ; set data line back to output
+                ora     #DATA_PIN      ; set data line back to output
                 sta     PORTA_DDR
                 ply
                 pla
                 rts
 
+;=================================================================================
+; Toggle clock high
 clock_high:    ; toggle clock from high to low to strobe the bit into the eeprom
                 lda     PORTA
-                ora     #%00000010      ; clock high
-                sta     PORTA
-                rts
-clock_low:         
-                lda     PORTA       
-                and     #%11111101      ; clock low
+                ora     #CLOCK_PIN      ; clock high
                 sta     PORTA
                 rts
 
+;=================================================================================
+; Toggle clock low
+clock_low:         
+                lda     PORTA       
+                and     #~CLOCK_PIN     ; clock low
+                sta     PORTA
+                rts
+
+;=================================================================================
+; Write to terminal (for debugging)
 write_to_terminal:
                 PHY
                 LDY #$ff
