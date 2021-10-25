@@ -3,6 +3,10 @@
 BYTE_OUT        =       $00         ; address used for shifting bytes
 BYTE_IN         =       $01         ; address used to shift reveived bits into
 LAST_ACK_BIT    =       $06
+ARGS            =       $07
+
+
+
 SER_DATA        =       $4800       ; Data register
 SER_ST          =       $4801       ; Status register
 SER_CMD         =       $4802       ; Command register
@@ -36,23 +40,57 @@ DEVICE3         =       %110
                 ora     #(DATA_PIN | CLOCK_PIN)
                 sta     PORTA_DDR
 
-; ========================= WRITE TO EEPROM ===========================
-;                 jsr     start_condition
-;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-;                 jsr     transmit_byte
-;                 jsr     set_address
-; ; 7. TRANSMIT A BYTE
-;                 ldy     #$40
-; write_loop:
-;                 iny
-;                 tya
-;                 ; jsr     write_to_terminal
-;                 jsr     transmit_byte
-;                 cmp     #$5A
-;                 bne     write_loop
 
-;                 jsr     stop_condition
-; ; ========================= ACKNOWLEDGE POLL ===========================
+
+                ; arg: block / device
+                lda     #%100           ; block 1, device 0
+                sta     ARGS
+                ; arg: target high address
+                lda     #0              ; target address high byte
+                sta     ARGS+1
+                ; arg: target low address
+                lda     #0              ; target address low byte
+                sta     ARGS+2
+
+                ; arg: address of start of string
+                lda     #<text          ; low byte of address of first byte
+                sta     ARGS+3
+                lda     #>text          ; high byte of address of first byte
+                sta     ARGS+4          
+
+                ; arg: string length
+                lda     #21             ; number of bytes to write
+                sta     ARGS+5
+
+                jsr     write_sequence
+                rts
+text:
+                .asciiz "This is a third test"
+
+write_sequence:
+                jsr     start_condition
+                lda     ARGS            ; block / device
+                asl                     
+                sta     ARGS
+                lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     ARGS            ; set block and device bits in A
+                jsr     transmit_byte   ; send command to EEPROM
+
+                lda     ARGS+1
+                ldx     ARGS+2
+                jsr     set_address     ; pulls two bytes from the stack
+
+                ldy     #0              ; start at 0
+.byte_loop:
+                lda     (ARGS+3),y
+                jsr     write_to_terminal
+                jsr     transmit_byte
+                iny
+                cpy     ARGS+5            ; compare with string lengths in TMP1
+                bne     .byte_loop
+                jsr     stop_condition
+                rts
+; ========================= ACKNOWLEDGE POLL ===========================
 ; ack_loop:
 ;                 jsr     start_condition
 ;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
@@ -60,27 +98,27 @@ DEVICE3         =       %110
 ;                 ; read ack bit
 ;                 lda     LAST_ACK_BIT
 ;                 bne     ack_loop
-; ========================= READ FROM EEPROM ===========================
+; ; ========================= READ FROM EEPROM ===========================
 
-                jsr     start_condition
-                lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-                jsr     transmit_byte
-                jsr     set_address
-                jsr     start_condition ; random read mode requires two start conditions
-                lda     #(EEPROM_CMD | READ_MODE | DEVICE0 | BLOCK0)
-                jsr     transmit_byte
+;                 jsr     start_condition
+;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
+;                 jsr     transmit_byte
+;                 jsr     set_address
+;                 jsr     start_condition ; random read mode requires two start conditions
+;                 lda     #(EEPROM_CMD | READ_MODE | DEVICE0 | BLOCK0)
+;                 jsr     transmit_byte
 
-                ldx     #26
-receive_loop:
-                jsr     receive_byte    ; this receives the byte in BYTE_IN
-                jsr     stop_condition
-                lda     BYTE_IN
-                jsr     write_to_terminal
+;                 ldx     #14
+; receive_loop:
+;                 jsr     receive_byte    ; this receives the byte in BYTE_IN
+;                 jsr     stop_condition
+;                 lda     BYTE_IN
+;                 jsr     write_to_terminal
 
-                dex
-                bne     receive_loop
+;                 dex
+;                 bne     receive_loop
 
-                rts
+;                 rts
 
 start_condition:
                 ; 1. DEACTIVATE BUS
@@ -104,10 +142,10 @@ stop_condition:
                 sta     PORTA
                 rts
 
-set_address:
-                lda     #0              ; for testing, start at address 0
+; a: high byte, x: low byte
+set_address:    
                 jsr     transmit_byte   ; high address byte
-                lda     #0              ; for testing, start at address 0
+                txa                     ; low address byte from x
                 jsr     transmit_byte   ; low address byte
                 rts
 
