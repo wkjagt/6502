@@ -42,31 +42,31 @@ DEVICE3         =       %110
 
 
 
-;                CALL WRITE SEQUENVE ROUTINE
-;                 ; arg: block / device
-;                 lda     #%000           ; block 1, device 0
-;                 sta     ARGS
-;                 ; arg: target high address
-;                 lda     #0              ; target address high byte
-;                 sta     ARGS+1
-;                 ; arg: target low address
-;                 lda     #0              ; target address low byte
-;                 sta     ARGS+2
+               CALL WRITE SEQUENVE ROUTINE
+                ; arg: block / device
+                lda     #%000           ; block 1, device 0
+                sta     ARGS
+                ; arg: target high address
+                lda     #0              ; target address high byte
+                sta     ARGS+1
+                ; arg: target low address
+                lda     #0              ; target address low byte
+                sta     ARGS+2
 
-;                 ; arg: address of start of string
-;                 lda     #<text          ; low byte of address of first byte
-;                 sta     ARGS+3
-;                 lda     #>text          ; high byte of address of first byte
-;                 sta     ARGS+4          
+                ; arg: address of start of string
+                lda     #<text          ; low byte of address of first byte
+                sta     ARGS+3
+                lda     #>text          ; high byte of address of first byte
+                sta     ARGS+4          
 
-;                 ; arg: string length
-;                 lda     #21             ; number of bytes to write
-;                 sta     ARGS+5
+                ; arg: string length
+                lda     #21             ; number of bytes to write
+                sta     ARGS+5
 
-;                 jsr     write_sequence
-;                 rts
-; text:
-;                 .asciiz "This is a third test"
+                jsr     write_sequence
+                rts
+text:
+                .asciiz "This is a third test"
 
 
 ;=============== CALL READ SEQUENCE ROUTINE ===========
@@ -91,12 +91,6 @@ DEVICE3         =       %110
                 sta     ARGS+5
 
                 jsr     read_sequence
-
-
-                ; lda     #$ff
-                ; sta     PORTA_DDR
-                ; sta     PORTA
-
                 rts
 
 
