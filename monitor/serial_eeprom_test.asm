@@ -115,9 +115,11 @@ write_sequence:
                 ora     ARGS            ; set block and device bits in A
                 jsr     transmit_byte   ; send command to EEPROM
 
+                ; set high and low bytes of the target address
                 lda     ARGS+1
-                ldx     ARGS+2
-                jsr     set_address     ; pulls two bytes from the stack
+                jsr     transmit_byte
+                lda     ARGS+2
+                jsr     transmit_byte
 
                 ldy     #0              ; start at 0
 .byte_loop:
@@ -151,10 +153,11 @@ read_sequence:
                 ora     ARGS
                 jsr     transmit_byte   ; send command to EEPROM
 
-                ; send address
+                ; set high and low bytes of the target address
                 lda     ARGS+1
-                ldx     ARGS+2
-                jsr     set_address     ; pulls two bytes from the stack
+                jsr     transmit_byte
+                lda     ARGS+2
+                jsr     transmit_byte
 
                 ; send start condition
                 jsr     start_condition
@@ -165,9 +168,7 @@ read_sequence:
                 jsr     transmit_byte   ; send command to EEPROM
 
                 ; set data pin as input
-                lda     PORTA_DDR
-                and     #%11111110      ; data direction to input on the data line
-                sta     PORTA_DDR
+                jsr     data_in
 
                 ldx     #0              ; byte counter, counts up to length in ARGS+5
 .byte_loop:
