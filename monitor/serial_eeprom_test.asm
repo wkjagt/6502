@@ -69,7 +69,7 @@ READ_MODE       =       1
                 inx
                 bne     .loop_d
 
-                jmp     test_read_sequence
+                ; jmp     test_read_sequence
 ;====================================================================================
 ;
 ;               TEST: COPY 1024 BYTES FROM SPECIFIC START ADDRESS
@@ -149,7 +149,7 @@ READ_MODE       =       1
                 ldx     #8
 .next_128_bytes:
 ;               13. Everything is now set up to write the first 128 bytes to the device
-                jsr     write_sequence
+                jsr     read_sequence
 
 ;               14. Point to the start of the next 128 bytes in RAM
                 clc
@@ -209,36 +209,36 @@ READ_MODE       =       1
 ;                TEST: CALL READ SEQUENCE ROUTINE 
 ;                           ----
 ;====================================================================================
-test_read_sequence
-                lda     #%000           ; BDD
-                sta     DEVICE_BLOCK
-                ; arg: target high address
-                lda     #26              ; target address high byte
-                sta     DEVICE_ADDR_H
-                ; arg: target low address
-                lda     #0              ; target address low byte
-                sta     DEVICE_ADDR_L
+; test_read_sequence
+;                 lda     #%000           ; BDD
+;                 sta     DEVICE_BLOCK
+;                 ; arg: target high address
+;                 lda     #26              ; target address high byte
+;                 sta     DEVICE_ADDR_H
+;                 ; arg: target low address
+;                 lda     #0              ; target address low byte
+;                 sta     DEVICE_ADDR_L
 
-                ; arg: address to write string to
-                lda     #0              ; low byte of address of first byte
-                sta     LOCAL_ADDR_L
-                lda     #2              ; high byte of address of first byte
-                sta     LOCAL_ADDR_H          
+;                 ; arg: address to write string to
+;                 lda     #0              ; low byte of address of first byte
+;                 sta     LOCAL_ADDR_L
+;                 lda     #2              ; high byte of address of first byte
+;                 sta     LOCAL_ADDR_H          
 
-                ; arg: string length
-                lda     #10             ; number of bytes to read
-                sta     READ_LENGTH
+;                 ; arg: string length
+;                 lda     #10             ; number of bytes to read
+;                 sta     READ_LENGTH
 
-                jsr     read_sequence
-                ldy     #0
-.loop:
-                lda     (LOCAL_ADDR_L),y
-                jsr     write_to_terminal
-                iny
-                cpy     READ_LENGTH
-                bne     .loop
+;                 jsr     read_sequence
+;                 ldy     #0
+; .loop:
+;                 lda     (LOCAL_ADDR_L),y
+;                 jsr     write_to_terminal
+;                 iny
+;                 cpy     READ_LENGTH
+;                 bne     .loop
 
-                rts
+;                 rts
 
 ;=================================================================================
 ;               ROUTINES
@@ -287,6 +287,7 @@ ack_loop:
 ;   - ARGS+4: High byte of vector pointing to where to write the first byte
 ;   - ARGS+5: Number of bytes to read
 read_sequence:
+                phx
                 jsr     _init_sequence
 
                 ; Now that the address is set, start read mode
@@ -313,6 +314,7 @@ read_sequence:
 
                 lda     BYTE_IN
                 sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
+                jsr     write_to_terminal
 
                 iny
                 cpy     READ_LENGTH
@@ -333,18 +335,8 @@ read_sequence:
                 jsr     _data_out
 
                 jsr     _stop_condition
+                plx
                 rts
-
-; ========================= ACKNOWLEDGE POLL ===========================
-; ack_loop:
-;                 jsr     _start_condition
-;                 lda     #(EEPROM_CMD | WRITE_MODE | DEVICE0 | BLOCK0)
-;                 jsr     _transmit_byte
-;                 ; read ack bit
-;                 lda     LAST_ACK_BIT
-;                 bne     ack_loop
-; ; ========================= READ FROM EEPROM ===========================
-
 
 ;=================================================================================
 ;               PRIVATE ROUTINES
