@@ -1,17 +1,24 @@
 ; SAVE "HELLO WORLD" TO EEPROM AND READ IT BACK
 
-BYTE_OUT        =       $00         ; address used for shifting bytes
-BYTE_IN         =       $01         ; address used to shift reveived bits into
+BYTE_OUT        =       $00             ; address used for shifting bytes
+BYTE_IN         =       $01             ; address used to shift reveived bits into
 LAST_ACK_BIT    =       $06
-ARGS            =       $07
+ARGS            =       $07             ; 6 bytes
 
-SER_DATA        =       $4800       ; Data register
-SER_ST          =       $4801       ; Status register
-SER_CMD         =       $4802       ; Command register
-SER_CTL         =       $4803       ; Control register
-SER_RXFL        =       %00001000   ; Serial Receive full bit
-PORTA           =       $6001       ; Data port A
-PORTA_DDR       =       $6003       ; Data direction of port A
+DEVICE_BLOCK    =       ARGS+0
+DEVICE_ADDR_H   =       ARGS+1
+DEVICE_ADDR_L   =       ARGS+2
+LOCAL_ADDR_L    =       ARGS+3
+LOCAL_ADDR_H    =       ARGS+4
+READ_LENGTH     =       ARGS+5
+
+SER_DATA        =       $4800           ; Data register
+SER_ST          =       $4801           ; Status register
+SER_CMD         =       $4802           ; Command register
+SER_CTL         =       $4803           ; Control register
+SER_RXFL        =       %00001000       ; Serial Receive full bit
+PORTA           =       $6001           ; Data port A
+PORTA_DDR       =       $6003           ; Data direction of port A
 
 DATA_PIN        =       %01            
 CLOCK_PIN       =       %10
@@ -31,10 +38,148 @@ READ_MODE       =       1
                 lda     PORTA_DDR
                 ora     #(DATA_PIN | CLOCK_PIN)
                 sta     PORTA_DDR
+                ; rts
 
-            ;    CALL WRITE SEQUENCE ROUTINE
-                ; arg: block / device
-;                 lda     #%000           ; BDD
+                ; fill 4 pages in RAM to test
+                lda     #"a"
+                ldx     #0
+.loop_a
+                sta     $0a00, x
+                inx
+                bne     .loop_a
+
+                lda     #"b"
+                ldx     #0
+.loop_b
+                sta     $0b00, x
+                inx
+                bne     .loop_b
+
+                lda     #"c"
+                ldx     #0
+.loop_c
+                sta     $0c00, x
+                inx
+                bne     .loop_c
+
+                lda     #"d"
+                ldx     #0
+.loop_d
+                sta     $0d00, x
+                inx
+                bne     .loop_d
+
+                jmp     test_read_sequence
+;====================================================================================
+;
+;               TEST: COPY 1024 BYTES FROM SPECIFIC START ADDRESS
+;               IN RAM TO SPECIFIC START ADDRESS IN EEPROM
+;
+;               A Forth block is 4 pages long (1024k). Each EEPROM block is 64k long
+;               and can store 64 Forth blocks. We have 4 EEPROM blocks, so we can store
+;               a maximum of 256 Forth blocks. Each of the 256 Forth block numbers
+;               results in one of 4 EEPROM block / device possibilities and one of 64
+;               possible starting addresses on the EEPROM. This translates to:
+;
+;               block/device:           2 bits
+;               start address in block: 6 bits
+;              
+;               To align all the Forth blocks one after the other in the EEPROM, Forth
+;               block numbers translate to EEPROM device / block ids as follows:
+;               
+;               Forth block#                                Device#     Device block
+;               000-063 (00-3F / 0000.0000 - 0011.1111)     0           0
+;               064-127 (40-7f / 0100.0000 - 0111.1111)     0           1
+;               128-191 (80-BF / 1000.0000 - 1011.1111)     1           0
+;               192-256 (C0-FF / 1100.0000 - 1111.1111)     1           1
+;
+;               This makes an easy translation possible because we can use bit 7 from
+;               the Forth block number as the EEPROM device id, and bit 6 from the Forth
+;               block number as device block id.
+;
+;               To get the starting address within a device block, we take the Forth
+;               block number, and shift it left twice. This removes the left two bits
+;               which were used to select the device and device block, and results in
+;               the high byte of the address within the device block. Ie:
+;               
+;               Block 0000.0011 (3) shifted left twice gives high byte 0000.1100 (C)
+;               for starting address in device 0 and device block 0.
+;
+;               This is achieved through the following steps:
+;               1. Store the Forth block number in the argument for the high byte of
+;                  the target address.
+                lda     #6              ; 6 here is just an example Forth block number
+                sta     DEVICE_ADDR_H   ; the argument for the high byte of the target address
+;               2. Initialize argument for block/device with 0.
+                stz     DEVICE_BLOCK
+;               3. Shift Forth block id left. Carry now contains the device id and the Forth
+;                  block id argument now contains the high byte of the target address.
+                asl     DEVICE_ADDR_H
+;               4. Rotate right into the block/device argument (shift right because device
+;                  id is the right most bit in the argument because of the bit order in
+;                  the byte sent to the physical device)
+                ror     DEVICE_BLOCK
+;               5. Shift right because we need a 0 in between the device id
+;                  and the device block id.
+                lsr     DEVICE_BLOCK
+;               6. Shift Forth block id left. Carry now contains the device block id.
+                asl     DEVICE_ADDR_H
+;               7. Rotate right into the block/device argument. This argument now looks
+;                  like B0D0.0000.
+                ror     DEVICE_BLOCK
+;               8. Shift right five times to have 0000.0B0D so this argument now contains
+;                  the right value for the device block and id.
+                lsr     DEVICE_BLOCK
+                lsr     DEVICE_BLOCK
+                lsr     DEVICE_BLOCK
+                lsr     DEVICE_BLOCK
+                lsr     DEVICE_BLOCK
+;               9. Since we only start writing at the start of a device block page,
+;                  the low byte of the target address is always 0
+                stz     DEVICE_ADDR_L
+;               10. Set the start address of where to start reading from RAM.
+                stz     LOCAL_ADDR_L   ; Low byte, testing for now. TODO: load from stack
+                lda     #$a
+                sta     LOCAL_ADDR_H   ; High byte, testing for now. TODO: load from stack
+;               11. Since we're always reading 128 byte sequences, length can be hardcoded
+                lda     #128
+                sta     READ_LENGTH
+
+;               12. Initialize a counter because we need to write in 8 128 byte sequences.
+                ldx     #8
+.next_128_bytes:
+;               13. Everything is now set up to write the first 128 bytes to the device
+                jsr     write_sequence
+
+;               14. Point to the start of the next 128 bytes in RAM
+                clc
+                lda     LOCAL_ADDR_L
+                adc     #128
+                sta     LOCAL_ADDR_L
+                lda     LOCAL_ADDR_H
+                adc     #0
+                sta     LOCAL_ADDR_H
+
+;               15. Point to the start of the next 128 bytes in the device.
+                clc
+                lda     DEVICE_ADDR_L
+                adc     #128
+                sta     DEVICE_ADDR_L
+                lda     DEVICE_ADDR_H
+                adc     #0
+                sta     DEVICE_ADDR_H
+
+                dex
+                bne     .next_128_bytes
+
+                rts
+
+;====================================================================================
+;                TEST: CALL WRITE SEQUENCE ROUTINE 
+;                           -----
+;====================================================================================
+;                 ; arg: block / device
+;                 lda     #%101           ; BDD
 ;                 sta     ARGS
 ;                 ; arg: target high address
 ;                 lda     #0              ; target address high byte
@@ -50,34 +195,37 @@ READ_MODE       =       1
 ;                 sta     ARGS+4          
 
 ;                 ; arg: string length
-;                 lda     #7             ; number of bytes to write
+;                 lda     #10             ; number of bytes to write
 ;                 sta     ARGS+5
 
 ;                 jsr     write_sequence
 ;                 rts
 ; text:
-;                 .asciiz "BLOCK A"
+;                 .asciiz "DEVICE 1!"
 
 
-;=============== CALL READ SEQUENCE ROUTINE ===========
-                ; arg: block / device
+;====================================================================================
+;                TEST: CALL READ SEQUENCE ROUTINE 
+;                           ----
+;====================================================================================
+test_read_sequence
                 lda     #%000           ; BDD
                 sta     ARGS
                 ; arg: target high address
-                lda     #0              ; target address high byte
+                lda     #26              ; target address high byte
                 sta     ARGS+1
                 ; arg: target low address
                 lda     #0              ; target address low byte
                 sta     ARGS+2
 
                 ; arg: address to write string to
-                lda     #0          ; low byte of address of first byte
+                lda     #0              ; low byte of address of first byte
                 sta     ARGS+3
-                lda     #2          ; high byte of address of first byte
+                lda     #2              ; high byte of address of first byte
                 sta     ARGS+4          
 
                 ; arg: string length
-                lda     #7             ; number of bytes to read
+                lda     #10             ; number of bytes to read
                 sta     ARGS+5
 
                 jsr     read_sequence
@@ -117,6 +265,17 @@ write_sequence:
                 cpy     ARGS+5            ; compare with string lengths in TMP1
                 bne     .byte_loop
                 jsr     _stop_condition
+
+                ; wait for write sequence to be completely written to EEPROM.
+                ; This isn't always needed, but it's safer to do so, and doesn't
+                ; waste much time.
+ack_loop:
+                jsr     _start_condition
+                lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     ARGS
+                jsr     _transmit_byte   ; send command to EEPROM
+                lda     LAST_ACK_BIT
+                bne     ack_loop
                 rts
 
 ;=================================================================================
