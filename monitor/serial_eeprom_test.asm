@@ -178,25 +178,26 @@ READ_MODE       =       1
 ;                TEST: CALL WRITE SEQUENCE ROUTINE 
 ;                           -----
 ;====================================================================================
+
 ;                 ; arg: block / device
 ;                 lda     #%101           ; BDD
-;                 sta     ARGS
+;                 sta     DEVICE_BLOCK
 ;                 ; arg: target high address
 ;                 lda     #0              ; target address high byte
-;                 sta     ARGS+1
+;                 sta     DEVICE_ADDR_H
 ;                 ; arg: target low address
 ;                 lda     #0              ; target address low byte
-;                 sta     ARGS+2
+;                 sta     DEVICE_ADDR_L
 
 ;                 ; arg: address of start of string
 ;                 lda     #<text          ; low byte of address of first byte
-;                 sta     ARGS+3
+;                 sta     LOCAL_ADDR_L
 ;                 lda     #>text          ; high byte of address of first byte
-;                 sta     ARGS+4          
+;                 sta     LOCAL_ADDR_H          
 
 ;                 ; arg: string length
 ;                 lda     #10             ; number of bytes to write
-;                 sta     ARGS+5
+;                 sta     READ_LENGTH
 
 ;                 jsr     write_sequence
 ;                 rts
@@ -210,33 +211,31 @@ READ_MODE       =       1
 ;====================================================================================
 test_read_sequence
                 lda     #%000           ; BDD
-                sta     ARGS
+                sta     DEVICE_BLOCK
                 ; arg: target high address
                 lda     #26              ; target address high byte
-                sta     ARGS+1
+                sta     DEVICE_ADDR_H
                 ; arg: target low address
                 lda     #0              ; target address low byte
-                sta     ARGS+2
+                sta     DEVICE_ADDR_L
 
                 ; arg: address to write string to
                 lda     #0              ; low byte of address of first byte
-                sta     ARGS+3
+                sta     LOCAL_ADDR_L
                 lda     #2              ; high byte of address of first byte
-                sta     ARGS+4          
+                sta     LOCAL_ADDR_H          
 
                 ; arg: string length
                 lda     #10             ; number of bytes to read
-                sta     ARGS+5
+                sta     READ_LENGTH
 
                 jsr     read_sequence
-
-                ; check if received
                 ldy     #0
 .loop:
-                lda     (ARGS+3),y
+                lda     (LOCAL_ADDR_L),y
                 jsr     write_to_terminal
                 iny
-                cpy     ARGS+5
+                cpy     READ_LENGTH
                 bne     .loop
 
                 rts
@@ -258,11 +257,11 @@ write_sequence:
                 jsr     _init_sequence
                 ldy     #0              ; start at 0
 .byte_loop:
-                lda     (ARGS+3),y
+                lda     (LOCAL_ADDR_L),y
                 jsr     write_to_terminal
                 jsr     _transmit_byte
                 iny
-                cpy     ARGS+5            ; compare with string lengths in TMP1
+                cpy     READ_LENGTH            ; compare with string lengths in TMP1
                 bne     .byte_loop
                 jsr     _stop_condition
 
@@ -313,10 +312,10 @@ read_sequence:
                 bne     .bit_loop       ; keep going until all 8 bits are shifted in
 
                 lda     BYTE_IN
-                sta     (ARGS+3),y      ; store the byte following the provided vector
+                sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
 
                 iny
-                cpy     ARGS+5
+                cpy     READ_LENGTH
                 beq     .done           ; no ack for last byte, as per the datasheet
 
                 ; ack the reception of the byte
@@ -372,9 +371,9 @@ _init_sequence:
                 jsr     _transmit_byte   ; send command to EEPROM
 
                 ; set high and low bytes of the target address
-                lda     ARGS+1
+                lda     DEVICE_ADDR_H
                 jsr     _transmit_byte
-                lda     ARGS+2
+                lda     DEVICE_ADDR_L
                 jsr     _transmit_byte
                 rts
 ;=================================================================================
