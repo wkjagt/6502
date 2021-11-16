@@ -12,7 +12,7 @@ IO_IER   = $600e                        ; Interrupt enable register
 ;==============================================================================
 ; Addresses for registers on the 6551 ACIA
 ;==============================================================================
-SER_DATA = $4800                        ; Data regiter
+SER_DATA = $4800                        ; Data register
 SER_ST   = $4801                        ; Status register
 SER_CMD  = $4802                        ; Command register
 SER_CTL  = $4803                        ; Control register
@@ -80,11 +80,41 @@ RESET:          sei
 ;==============================================================================
 ; Initialize the TMS9918A VDP video chip
 ;==============================================================================
-                jsr     vdp_setup
+                ; jsr     vdp_setup
 ;==============================================================================
 ; Initialize the PS/2 keyboard interface
 ;==============================================================================
-                jsr     KBSETUP
+                ; jsr     KBSETUP
+;==============================================================================
+; Welcome text on serial
+;==============================================================================
+
+; ; write:
+; ;     LDX #0
+; ; next_char:
+; ;     LDY #$ff
+; ; wait_txd_empty:
+; ;     DEY
+; ;     BNE wait_txd_empty
+; ;     LDA text,x
+; ;     BEQ read
+; ;     jsr write_acia
+; ;     INX
+; ;     JMP next_char
+; ; read:
+; ;     LDA SER_ST
+; ;     AND #SER_RXFL
+; ;     BEQ read
+; ;     LDA SER_DATA
+; ;     JSR write_acia
+; ;     JMP read
+
+; ; write_acia:
+; ;     STA SER_DATA
+; ;     RTS
+
+; text:                             ; CR   LF  Null
+;     .asciiz "Shallow Thought v0.01 / 14-10-2021", $0d, $0a, $00
 
 ;==============================================================================
 ; The main program loop for loading a program into RAM over serial
@@ -98,7 +128,7 @@ LOOP:           jsr     RD_SRL_B
                 bne     LOOP
                 jsr     LOAD_PRG
                 jsr     PRG_STRT
-                jmp     LOOP
+                jmp     RESET
 ;==============================================================================
 ; The program load routine is a very much simplified implementation of
 ; xmodem. It leaves out all error checking, but is otherwise pretty much
@@ -134,6 +164,7 @@ RD_SRL_B:       lda     SER_ST
                 lda     SER_DATA
                 rts
 
+WR_SRL_B:       
 ;==============================================================================
 ; Interrupt handlers
 ;==============================================================================
