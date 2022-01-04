@@ -1,66 +1,209 @@
-IO_PORTB = $6000                        ; Data port B
-IO_PORTA = $6001                        ; Data port A
-IO_DDRB  = $6002                        ; Data direction of port B
-IO_DDRA  = $6003                        ; Data direction of port A
-IO_PCR   = $600c                        ; Peripheral control register
-IO_IFR   = $600d                        ; Interrupt flag register
-IO_IER   = $600e                        ; Interrupt enable register
+; 0 = input, 1 = output
+; PORT A: screen and storage
+; PORT B: keyboard
+IO_PORTB        =       $6000           ; Data port B
+IO_PORTA        =       $6001           ; Data port A
+IO_DDRB         =       $6002           ; Data direction of port B
+IO_DDRA         =       $6003           ; Data direction of port A
+IO_PCR          =       $600c           ; Peripheral control register
+IO_IFR          =       $600d           ; Interrupt flag register
+IO_IER          =       $600e           ; Interrupt enable register
 
+SER_DATA        =       $4800           ; Data register
+SER_CMD         =       $4802           ; Command register
+
+NAK             =       $15
+ACK             =       $06
+EOT             =       $04
 
 CLEAR_SCREEN    =       $0c
-CHOOSE_CURSOR   =       2
-CURSOR_CHAR     =       $db
+CHOOSE_CURSOR   =       2               ; choose cursor command to screen
+CURSOR_CHAR     =       $db             ; solid block
 CURSOR_BLINK    =       3
 
-DATA_PINS       =       %11110000
-AVAILABLE       =       %00000100
-ACK             =       %00001000
-OUTPUT_PINS     =       DATA_PINS | AVAILABLE
-UNUSED_PINS     =       %00000011
+SCRN_DATA_PINS  =       %11110000       ; In 4 bit mode: send 4 bits of data at a time
+SCRN_AVAILABLE  =       %00000100       ; To tell the screen that new data is available
+SCRN_ACK        =       %00001000       ; Input pin for the screen to ack the data
+SCRN_OUT_PINS   =       SCRN_DATA_PINS | SCRN_AVAILABLE
+SCRN_UNUSED     =       %00000011       ; unused pins on this port
+
+; kb
+KB_CHAR_IN      =       $0
+KB_ACK          =       %01000000
+
+
+RD_SRL_B        =       $838D
+
+tmp3            =       $04             ; two bytes
 
                 .ORG    $0700
 
+
 screen_init:
-                ; set data direction for the 6 needed pins, while keeping
-                ; the unused ones unchanged
+                ; data direction
                 lda     IO_DDRA
-                ora     #OUTPUT_PINS
-                and     #(OUTPUT_PINS | UNUSED_PINS)
+                ora     #SCRN_OUT_PINS
+                and     #(SCRN_OUT_PINS | SCRN_UNUSED)
                 sta     IO_DDRA
 
-                ; set all used pins low, while keeping the unused ones unchanged
+                ; start with all pins low (not sure this is needed)
                 lda     IO_PORTA
-                and     #UNUSED_PINS
+                and     #SCRN_UNUSED
                 sta     IO_PORTA
 
-                lda     #CLEAR_SCREEN
-                jsr     send_byte
-                lda     #CHOOSE_CURSOR
-                jsr     send_byte
-                lda     #CURSOR_CHAR
-                jsr     send_byte
-                lda     #CURSOR_BLINK
-                jsr     send_byte
+                lda     #str_screen_init
+                jsr     print_string
+
+                lda     #str_startup
+                jsr     print_string
+
+kb_init:
+                ; data direction on port B
+                lda     #KB_ACK         ; only the ack pin is output
+                sta     IO_DDRB
+
+                lda     #str_any_key
+                jsr     print_string
+
+wait_for_key_press:
                 
-                ldx     #0
-.text_loop:
-                lda     text,x
-                beq     .done
-                inx
-                jsr     send_byte
-                jmp     .text_loop
-.done
+                lda     IO_PORTB
+                bpl     wait_for_key_press
+
+                jsr     receive_nibble  ; take the key from the buffer
+                jsr     receive_nibble
+                jsr     receive_nibble
+
+xmodem_receive
+                lda     #NAK            ; tell the sender to start sending
+                sta     SER_DATA
+
+.next_packet:
+                jsr     receive_byte    ; receive SOH or EOT
+                cmp     #EOT
+                beq     eot
+
+                jsr     receive_byte    ; packet sequence number
+                jsr     receive_byte    ; packet sequence number checksum
+
+                ldy     #128            ; 128 data bytes
+.next_byte:
+                jsr     receive_byte
+                jsr     print_formatted_byte_as_hex
+
+                dey
+                bne     .next_byte
+
+                jsr     receive_byte    ; receive the data packet checksum
+
+                lda     #ACK
+                sta     SER_DATA
+
+                jmp     .next_packet
+eot:
+                lda     #ACK
+                sta     SER_DATA
                 rts
 
-text:                             ; CR   LF  Null
-    .asciiz "Shallow Thought v0.01 / 14-10-2021", $0d, $0a, $00
+receive_byte:
+                lda     #%11001011      ; terminal ready
+                sta     SER_CMD
 
-send_byte:
+                jsr     RD_SRL_B        ; blocking
+                pha
+
+                lda     #%11001010      ; terminal not ready
+                sta     SER_CMD
+
+                pla
+                rts
+
+print_formatted_byte_as_hex:
+                jsr     print_byte_as_hex
+                lda     #" "
+                jsr     send_byte_to_screen
+                rts
+
+print_byte_as_hex:
+                pha                     ; keep a copy for the low nibble
+
+                lsr                     ; shift high nibble into low nibble
+                lsr
+                lsr
+                lsr
+
+                jsr     print_nibble
+
+                pla                     ; get original value back
+                and     #$0F            ; reset high nibble
+                jsr     print_nibble
+                rts
+
+print_nibble:
+                cmp     #10
+                bcs     .letter         ; >= 10 (hex letter A-F)
+                adc     #48             ; ASCII offset to numbers 0-9
+                jmp     .print
+.letter:
+                adc     #54             ; ASCII offset to letters A-F
+.print:
+                jsr     send_byte_to_screen
+                rts
+
+keyboard_loop:
+                lda     IO_PORTB
+                bpl     keyboard_loop
+
+                ; receive the character. each receive_nibble call
+                ; shifts 4 bits into KB_CHAR_IN
+                jsr     receive_nibble
+                jsr     receive_nibble
+
+                ; write the character
+                lda     KB_CHAR_IN
+                jsr     send_byte_to_screen
+
+                ; receive the flags; ignore for now
+                jsr     receive_nibble
+
+                jmp     keyboard_loop
+
+receive_nibble:
+                lda     IO_PORTB        ; LDA loads bit 7 (avail) into N
+                ; bpl     receive_nibble  ; repeat until avail is 1
+
+                ; move low nibble from PORT B to high nibble
+                asl
+                asl
+                asl
+                asl
+
+                ldx     #4
+.rotate:
+                asl                     ; shift bit into carry
+                rol     KB_CHAR_IN      ; rotate carry into CHAR
+                dex
+                bne     .rotate
+
+                lda     IO_PORTB        ; send ack signal to kb controller
+                ora     #KB_ACK
+                sta     IO_PORTB
+.wait_avail_low:
+                lda     IO_PORTB        ; wait for available to go low
+                bmi     .wait_avail_low ; negative means bit 7 (avail) high
+
+                lda     IO_PORTB           ; set ack low
+                and     #!KB_ACK
+                sta     IO_PORTB
+                rts
+
+
+send_byte_to_screen:
                 pha                     ; we pull off the arg twice, once for high
                 pha                     ; nibble and once for low nibble
 
                 lda     IO_PORTA
-                and     #!DATA_PINS     ; clear data
+                and     #!SCRN_DATA_PINS     ; clear data
                 sta     IO_PORTA
 
                 jsr     wait_ack_low
@@ -69,7 +212,7 @@ send_byte:
                 ora     IO_PORTA
                 sta     IO_PORTA
 
-                ora     #AVAILABLE      ; flip available = high
+                ora     #SCRN_AVAILABLE      ; flip available = high
                 sta     IO_PORTA
 
                 jsr     wait_ack_high
@@ -86,7 +229,7 @@ send_byte:
                 ora     IO_PORTA
                 sta     IO_PORTA
 
-                and     #~AVAILABLE     ; flip available = low
+                and     #~SCRN_AVAILABLE     ; flip available = low
                 sta     IO_PORTA
 
                 jsr     wait_ack_low
@@ -98,7 +241,7 @@ wait_ack_high:
                 pha
 .loop
                 lda     IO_PORTA
-                and     #ACK
+                and     #SCRN_ACK
                 beq     .loop
                 pla
                 rts
@@ -106,7 +249,48 @@ wait_ack_low:
                 pha
 .loop:
                 lda     IO_PORTA
-                and     #ACK
+                and     #SCRN_ACK
                 bne     .loop
                 pla
                 rts
+
+
+print_string:
+                asl                     ; multiply by 2 because size of memory address is 2 bytes
+                tay
+                lda     string_table,y  ; string index into string table
+                sta     tmp3            ; LSB
+                iny
+                lda     string_table,y
+                sta     tmp3+1          ; MSB
+
+                                ldy #0
+.next_char:
+                lda (tmp3),y
+                beq .done
+
+                jsr send_byte_to_screen
+                iny
+                bra .next_char
+.done:
+                lda     #$0d
+                jsr     send_byte_to_screen
+                lda     #$0a
+                jsr     send_byte_to_screen
+                rts
+
+startup_text:                                    ; CR   LF  Null
+    .asciiz "Shallow Thought v0.01 / 14-10-2021", 0
+
+; strings ========================================
+
+str_screen_init =       0
+str_startup     =       1
+str_any_key     =       2
+
+string_table:
+                .word s_screen_init, s_startup, s_any_key
+
+s_screen_init:  .byte CLEAR_SCREEN, CHOOSE_CURSOR, CURSOR_CHAR, CURSOR_BLINK, 0
+s_startup:      .byte "Shallow Thought v0.01", 0                
+s_any_key:      .byte "Press any key", 0

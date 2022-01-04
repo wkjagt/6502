@@ -1,8 +1,3 @@
-SER_DATA        =       $4800           ; Data register
-SER_ST          =       $4801           ; Status register
-SER_CMD         =       $4802           ; Command register
-SER_CTL         =       $4803           ; Control register
-SER_RXFL        =       %00001000       ; Serial Receive full bit
 PORTB           =       $6000           ; Data port B
 PORTA           =       $6001           ; Data port A
 PORTB_DDR       =       $6002           ; Data direction of port B
@@ -60,17 +55,6 @@ receive_nibble:
                 and     #!ACK
                 sta     PORTB
                 rts
-
-; Write to terminal (for debugging)
-write_to_terminal:
-                PHY
-                LDY #$ff
-delay:
-                DEY
-                BNE delay
-                STA SER_DATA
-                PLY
-                RTS
 
 startup_text:
                 .asciiz "Start", $0d, $0a, $00
