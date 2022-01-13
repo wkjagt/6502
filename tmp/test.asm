@@ -43,6 +43,14 @@ next_key:
 
                 jsr putc
 
+                cmp #$20
+                bne .not_a_space
+                lda #0
+.not_a_space:
+
+
+                
+
                 cmp #$0D
                 beq .enter
 
