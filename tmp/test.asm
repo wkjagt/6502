@@ -1,64 +1,101 @@
 ; vasm6502_oldstyle -Fbin -dotdir -c02 test.asm -o test.rom && py65mon -m 65c02 -r test.rom
 
+option_vector = $7e
+keybuffer =     $80
+
+
                 .org $8000
 start:
-                lda     #$FF
-                sta     1
-                
-                ldx     #0
-                ldy     #17
-loop:
-                dey
-                bne     .continue
-                lda     #13
-                jsr     putc
-                lda     #10
-                jsr     putc
-                ldy     #16
-.continue:
-                lda     $8000,x
-                jsr     print_formatted_byte_as_hex
+                ldx #0
+init_loop:
+                lda chosen,x
+                beq .done
+                sta keybuffer,x
                 inx
-                bne     loop
-.done
+                jmp init_loop
+.done:
+
+                ldx #0 ; index into list of options
+find_option_loop:
+                lda options,x
+                sta option_vector
+                inx
+                lda options,x
+                sta option_vector+1
+
+                jsr compare_option
+                inx
+                cpx #6                  ; temp until the loop exits at the end of the list
+                bne find_option_loop
                 rts
 
-print_formatted_byte_as_hex:
-                jsr     print_byte_as_hex
-                lda     #" "
-                jsr     putc
+compare_option:
+                ldy #0
+.char_cmp_loop:
+                ; compare one character
+                lda keybuffer,y
+                cmp (option_vector),y
+                bne .not_a_match
+
+                ; is it the last character?
+                lda keybuffer,y
+                beq .found
+                iny
+                jmp .char_cmp_loop
+.not_a_match:
+                lda #"N"
+                jsr putc
+                rts
+.found:         
+                iny     ; skip past the 0 at the end of the string
+
+                ; option_vector now points to the option that holds the address
+                ; to jump to. Store that address in option_vector directly so we
+                ; can jump to it.
+                lda (option_vector), y
+                sta option_vector
+
+                lda (option_vector+1), y
+                lda option_vector+1
+
+                jmp (option_vector)
                 rts
 
-print_byte_as_hex:
-                pha                     ; keep a copy for the low nibble
+chosen:         .byte "option1",0
 
-                lsr                     ; shift high nibble into low nibble
-                lsr
-                lsr
-                lsr
-
-                jsr     print_nibble
-
-                pla                     ; get original value back
-                and     #$0F            ; reset high nibble
-                jsr     print_nibble
+option1:
+                lda #"1"
+                jsr putc
                 rts
 
-print_nibble:
-                cmp     #10
-                bcs     .letter         ; >= 10 (hex letter A-F)
-                adc     #48             ; ASCII offset to numbers 0-9
-                jmp     .print
-.letter:
-                adc     #54             ; ASCII offset to letters A-F
-.print:
-                jsr     putc
+option2:
+                lda #"2"
+                jsr putc
                 rts
 
+option3:
+                lda #"3"
+                jsr putc
+                rts
 
+putnr:
+                adc     #48
 putc:
                 sta     $F001
                 rts
+
+options:
+                .word o_option1, o_option2, o_option3
+
+o_option1:      .byte "option1", 0
+test1:          .word option1
+o_option2:      .byte "option2", 0
+test2:          .word option2
+o_option3:      .byte "option3", 0
+test3:          .word option3
+
+
+
 
 ; vectors
                 .org $FFFA
