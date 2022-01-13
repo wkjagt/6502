@@ -1,11 +1,18 @@
 ; vasm6502_oldstyle -Fbin -dotdir -c02 test.asm -o test.rom && py65mon -m 65c02 -r test.rom
 
-option_vector = $7e
+option_vector = $00
+keybuffer_ptr = $02
 keybuffer =     $80
 
+                .org $8000:
 
-                .org $8000
 start:
+                ldx #0
+clear_zp:
+                sta 0,x
+                inx
+                bne clear_zp                
+
                 ldx #0
 init_loop:
                 lda chosen,x
@@ -15,22 +22,81 @@ init_loop:
                 jmp init_loop
 .done:
 
-                ldx #0 ; index into list of options
+next_command:
+                lda #$0A
+                jsr putc
+                cmp #$0D
+                jsr putc
+                lda #0
+                sta keybuffer_ptr
+
+                ldx #keybuffer_ptr
+clear_buffer:                
+                sta 0,x
+                inx
+                bne clear_buffer
+next_key:
+                jsr getc
+
+                cmp #$7F
+                beq .backspace
+
+                jsr putc
+
+                cmp #$0D
+                beq .enter
+
+                ldx keybuffer_ptr
+                sta keybuffer,x
+                inc keybuffer_ptr
+
+                bra next_key
+.enter:
+                lda #$0A
+                jsr putc
+                jsr execute_option
+                bra next_command
+.backspace:
+                lda #$08
+                jsr putc
+                lda #" "
+                jsr putc
+                lda #$08
+                jsr putc
+
+                lda keybuffer_ptr
+                beq next_key
+                dec keybuffer_ptr
+                lda #0
+                sta keybuffer,x
+
+                bra next_key
+
+
+execute_option:
+                ldx #0                  ; index into list of options
 find_option_loop:
+                ; set up the pointer
                 lda options,x
                 sta option_vector
                 inx
                 lda options,x
                 sta option_vector+1
 
-                jsr compare_option
+                lda (option_vector)
+                bne .continue
+                lda (option_vector+1)
+                beq .done
+
+.continue:
+                jsr match_option
                 inx
-                cpx #6                  ; temp until the loop exits at the end of the list
-                bne find_option_loop
+                bra find_option_loop
+.done:
                 rts
 
-compare_option:
-                ldy #0
+match_option:
+                ldy #0                  ; index into strings
 .char_cmp_loop:
                 ; compare one character
                 lda keybuffer,y
@@ -61,7 +127,7 @@ compare_option:
                 jmp (option_vector)
                 rts
 
-chosen:         .byte "option1",0
+chosen:         .byte "option3",0
 
 option1:
                 lda #"1"
@@ -79,13 +145,19 @@ option3:
                 rts
 
 putnr:
-                adc     #48
+                adc #48
 putc:
-                sta     $F001
+                sta $F001
                 rts
 
+getc:
+                lda $f004
+                beq getc
+                rts
+
+
 options:
-                .word o_option1, o_option2, o_option3
+                .word o_option1, o_option2, o_option3, 0
 
 o_option1:      .byte "option1", 0
 test1:          .word option1
@@ -93,8 +165,6 @@ o_option2:      .byte "option2", 0
 test2:          .word option2
 o_option3:      .byte "option3", 0
 test3:          .word option3
-
-
 
 
 ; vectors
