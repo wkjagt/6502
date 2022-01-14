@@ -1,8 +1,14 @@
 ; vasm6502_oldstyle -Fbin -dotdir -c02 test.asm -o test.rom && py65mon -m 65c02 -r test.rom
 
-option_vector = $00
-keybuffer_ptr = $02
-keybuffer =     $80
+command_vector  =       $00
+keybuffer_ptr   =       $02
+keybuffer       =       $80
+
+SPACE           =       $20
+LF              =       $0A
+CR              =       $0D
+DEL             =       $7F
+BS              =       $08
 
                 .org $8000:
 
@@ -11,47 +17,34 @@ start:
 clear_zp:
                 sta 0,x
                 inx
-                bne clear_zp                
-
-                ldx #0
-init_loop:
-                lda chosen,x
-                beq .done
-                sta keybuffer,x
-                inx
-                jmp init_loop
-.done:
+                bne clear_zp
 
 next_command:
-                lda #$0A
+                lda #LF
                 jsr putc
-                cmp #$0D
+                cmp #CR
                 jsr putc
                 lda #0
                 sta keybuffer_ptr
 
-                ldx #keybuffer_ptr
+                ldx #128
 clear_buffer:                
-                sta 0,x
-                inx
+                sta keybuffer,x
+                dex
                 bne clear_buffer
 next_key:
                 jsr getc
 
-                cmp #$7F
+                cmp #DEL
                 beq .backspace
 
                 jsr putc
 
-                cmp #$20
+                cmp #SPACE
                 bne .not_a_space
-                lda #0
+                lda #0                  ; save 0 instead of space
 .not_a_space:
-
-
-                
-
-                cmp #$0D
+                cmp #CR                
                 beq .enter
 
                 ldx keybuffer_ptr
@@ -60,16 +53,16 @@ next_key:
 
                 bra next_key
 .enter:
-                lda #$0A
+                lda #LF
                 jsr putc
-                jsr execute_option
+                jsr execute_command
                 bra next_command
 .backspace:
-                lda #$08
+                lda #BS
                 jsr putc
                 lda #" "
                 jsr putc
-                lda #$08
+                lda #BS
                 jsr putc
 
                 lda keybuffer_ptr
@@ -81,73 +74,72 @@ next_key:
                 bra next_key
 
 
-execute_option:
-                ldx #0                  ; index into list of options
-find_option_loop:
+execute_command:
+                ldx #0                  ; index into list of commands
+find_command_loop:
                 ; set up the pointer
-                lda options,x
-                sta option_vector
+                lda commands,x
+                sta command_vector
                 inx
-                lda options,x
-                sta option_vector+1
+                lda commands,x
+                sta command_vector+1
 
-                lda (option_vector)
+                lda (command_vector)
                 bne .continue
-                lda (option_vector+1)
+                lda (command_vector+1)
                 beq .done
 
 .continue:
-                jsr match_option
+                jsr match_command
                 inx
-                bra find_option_loop
+                bra find_command_loop
 .done:
                 rts
 
-match_option:
+match_command:
                 ldy #0                  ; index into strings
 .char_cmp_loop:
                 ; compare one character
                 lda keybuffer,y
-                cmp (option_vector),y
-                bne .not_a_match
-
+                cmp (command_vector),y
+                bne .done
+.char_match
                 ; is it the last character?
                 lda keybuffer,y
-                beq .found
+                beq .string_match
                 iny
                 jmp .char_cmp_loop
-.not_a_match:
-                lda #"N"
-                jsr putc
-                rts
-.found:         
+.string_match:         
                 iny     ; skip past the 0 at the end of the string
 
-                ; option_vector now points to the option that holds the address
-                ; to jump to. Store that address in option_vector directly so we
+                ; command_vector now points to the command that holds the address
+                ; to jump to. Store that address in command_vector directly so we
                 ; can jump to it.
-                lda (option_vector), y
-                sta option_vector
+                lda (command_vector), y
+                sta command_vector
 
-                lda (option_vector+1), y
-                lda option_vector+1
+                lda (command_vector+1), y
+                lda command_vector+1
 
-                jmp (option_vector)
+                jmp (command_vector)
+.done
                 rts
 
-chosen:         .byte "option3",0
-
-option1:
-                lda #"1"
-                jsr putc
+rcv:
+                lda keybuffer_ptr
+                
+                ; inx
+                ; inx
+                ; lda keybuffer,x
+                jsr putnr
                 rts
 
-option2:
+command2:
                 lda #"2"
                 jsr putc
                 rts
 
-option3:
+command3:
                 lda #"3"
                 jsr putc
                 rts
@@ -163,16 +155,15 @@ getc:
                 beq getc
                 rts
 
+commands:
+                .word o_rcv, o_command2, o_command3, 0
 
-options:
-                .word o_option1, o_option2, o_option3, 0
-
-o_option1:      .byte "option1", 0
-test1:          .word option1
-o_option2:      .byte "option2", 0
-test2:          .word option2
-o_option3:      .byte "option3", 0
-test3:          .word option3
+o_rcv:           .byte "rcv", 0
+                 .word rcv
+o_command2:      .byte "command2", 0
+                 .word command2
+o_command3:      .byte "command3", 0
+                 .word command3
 
 
 ; vectors
