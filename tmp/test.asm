@@ -19,21 +19,17 @@ BS              =       $08
 start:
                 ldx #0
 clear_zp:
-                sta 0,x
+                stz 0,x
                 inx
                 bne clear_zp
 
 next_command:
-                lda #LF
-                jsr putc
-                cmp #CR
-                jsr putc
-                lda #0
-                sta keybuffer_ptr
+                jsr cr
+                stz keybuffer_ptr
 
                 ldx #128
 clear_buffer:                
-                sta keybuffer,x
+                stz keybuffer,x
                 dex
                 bne clear_buffer
 next_key:
@@ -57,8 +53,7 @@ next_key:
 
                 bra next_key
 .enter:
-                lda #LF
-                jsr putc
+                jsr cr
                 jsr execute_command
                 bra next_command
 .backspace:
@@ -70,48 +65,50 @@ next_key:
                 jsr putc
 
                 lda keybuffer_ptr
-                beq next_key
+                beq next_key            ; already at start of line
                 dec keybuffer_ptr
-                lda #0
-                sta keybuffer,x
+                ldx keybuffer_ptr
+                stz keybuffer,x
 
                 bra next_key
 
-
+; this loops over all the commands under the commands label
+; each of those points to an entry in the list that contains the
+; command string to match and the address of the routine to execute
 execute_command:
                 ldx #0                  ; index into list of commands
 find_command_loop:
-                lda commands,x
-                sta tmp1
+                lda commands,x          ; load the address of the entry
+                sta tmp1                ; into tmp1 (16 bits)
                 inx
                 lda commands,x
                 sta tmp1+1
 
-                lda (tmp1)
-                bne .continue
-                lda (tmp1+1)
+                lda (tmp1)              ; see if this is the last entry
+                ora (tmp1+1)            ; check two bytes for 0.
                 beq .done
-.continue:
+
                 jsr match_command
                 inx
                 bra find_command_loop
 .done:
                 rts
 
+; This looks at one command entry and matches it agains what's in the
+; keybuffer.
+; Y:    index into the string to match
+; tmp1: the starting address of the string
 match_command:
                 ldy #0                  ; index into strings
-.char_cmp_loop:
-                ; compare one character
+.compare_char:
                 lda keybuffer,y
                 cmp (tmp1),y
                 bne .done
-.char_match
-                ; is it the last character?
-                lda keybuffer,y
-                beq .string_match
+                lda keybuffer,y         ; is it the last character?
+                beq .string_matched
                 iny
-                jmp .char_cmp_loop
-.string_match:         
+                jmp .compare_char
+.string_matched:         
                 iny     ; skip past the 0 at the end of the string
                 sty param_index
 
@@ -147,8 +144,6 @@ command3:
                 jsr putc
                 rts
 
-putnr:
-                adc #48
 putc:
                 sta $F001
                 rts
@@ -157,7 +152,6 @@ getc:
                 lda $f004
                 beq getc
                 rts
-
 
 hex_to_byte:
                 sta     tmp2            ; we need the address to do lda (tmp2), y
@@ -205,15 +199,11 @@ dump_page:
                 sta     dump_start+1
                 ldx     #0
                 ldy     #0
-
 ; start of line (new line + start address)
 ; x counts up to 16 for each row
 ; y counts up to 256 for the whole page of memory
 .next_row:
-                lda     #LF
-                jsr     putc
-                lda     #CR
-                jsr     putc
+                jsr     cr
                 
                 lda     dump_start+1
                 jsr     print_byte_as_hex
@@ -274,7 +264,6 @@ dump_page:
                 rts
 
 
-
 print_byte_as_hex:
                 pha                     ; keep a copy for the low nibble
 
@@ -302,7 +291,14 @@ print_nibble:
                 rts
 
 
-                .org $a000
+cr:
+                lda     #LF
+                jsr     putc
+                lda     #CR
+                jsr     putc
+                rts
+
+
 commands:
                 .word o_dump, o_command2, o_command3, 0
 
