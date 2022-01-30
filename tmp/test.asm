@@ -1,318 +1,340 @@
-; vasm6502_oldstyle -Fbin -dotdir -c02 test.asm -o test.rom && py65mon -m 65c02 -r test.rom
+JUMP_TABLE_ADDR         = $300
+JMP_DUMP:               = JUMP_TABLE_ADDR + 0
+JMP_RCV:                = JUMP_TABLE_ADDR + 3
+JMP_INIT_SCREEN:        = JUMP_TABLE_ADDR + 6
+JMP_RUN:                = JUMP_TABLE_ADDR + 9
+JMP_RESET:              = JUMP_TABLE_ADDR + 12
+JMP_PUTC:               = JUMP_TABLE_ADDR + 15
+JMP_PRINT_HEX:          = JUMP_TABLE_ADDR + 18
+JMP_XMODEM_RCV:         = JUMP_TABLE_ADDR + 21
+JMP_GETC:               = JUMP_TABLE_ADDR + 24
+JMP_INIT_KB:            = JUMP_TABLE_ADDR + 27
+JMP_LINE_INPUT:         = JUMP_TABLE_ADDR + 30
+JMP_IRQ_HANDLER:        = JUMP_TABLE_ADDR + 33
+JMP_NMI_HANDLER:        = JUMP_TABLE_ADDR + 36
+JMP_INIT_SERIAL:        = JUMP_TABLE_ADDR + 39
+JMP_CURSOR_ON:          = JUMP_TABLE_ADDR + 42
+JMP_CURSOR_OFF:         = JUMP_TABLE_ADDR + 45
+JMP_DRAW_PIXEL:         = JUMP_TABLE_ADDR + 48
+JMP_RMV_PIXEL:          = JUMP_TABLE_ADDR + 51
 
-command_vector  =       $00
-keybuffer_ptr   =       $02
-tmp1            =       $04
-tmp2            =       $06
-dump_start      =       $08
-param_index     =       $0a
-keybuffer       =       $80
+BYTE_OUT                = $40             ; address used for shifting bytes
+BYTE_IN                 = $41             ; address used to shift reveived bits into
+LAST_ACK_BIT            = $42
+ARGS                    = $43             ; 6 bytes
 
-SPACE           =       $20
-LF              =       $0A
-CR              =       $0D
-DEL             =       $7F
-BS              =       $08
+DEVICE_BLOCK            = ARGS+0
+DEVICE_ADDR_H           = ARGS+1
+DEVICE_ADDR_L           = ARGS+2
+LOCAL_ADDR_L            = ARGS+3
+LOCAL_ADDR_H            = ARGS+4
+READ_LENGTH             = ARGS+5
 
-                .org $8000
+PORTA                   = $6001           ; Data port A
+PORTA_DDR               = $6003           ; Data direction of port A
+
+DATA_PIN                = %01            
+CLOCK_PIN               = %10
+
+EEPROM_CMD              = %10100000
+WRITE_MODE              = 0
+READ_MODE               = 1
+
+
+DATA_STACK_PTR          = $3f
+; data stack
+DATA_STACK_START        = $90
+
+
+
+                .org $2000
+
+init:           lda     #DATA_STACK_START
+                sta     DATA_STACK_PTR
+
+
 
 start:
-                ldx #0
-clear_zp:
-                stz 0,x
-                inx
-                bne clear_zp
+                jsr     init_storage
+                ; lda     #"!"
+                ; sta     $1000
 
-next_command:
-                jsr cr
-                stz keybuffer_ptr
+                ;   - ARGS+0: Block / device address. Three bits: 00000BDD
+                lda     #%00000100
+                sta     ARGS+0
+                ;   - ARGS+1: High byte of target address on the EEPROM
+                lda     #%00000000
+                sta     ARGS+1
+                ;   - ARGS+2: Low byte of target address on the EEPROM
+                lda     #%00000000
+                sta     ARGS+2
+                ;   - ARGS+3: Low byte of vector pointing to first byte to transmit
+                lda     #<$1000
+                sta     ARGS+3
+                ;   - ARGS+4: High byte of vector pointing to first byte to transmit
+                lda     #>$1000
+                sta     ARGS+4
+                ;   - ARGS+5: Number of bytes to write (max: 128)
+                lda     #128
+                sta     ARGS+5
 
-                ldx #128
-clear_buffer:                
-                stz keybuffer,x
+                ; jsr     write_sequence
+
+                jsr     read_sequence
+
+                lda     $1000
+                jsr     JMP_PUTC
+                rts
+
+
+init_storage:
+                lda     PORTA_DDR
+                ora     #(DATA_PIN | CLOCK_PIN)
+                sta     PORTA_DDR
+
+                rts
+
+
+;=================================================================================
+;               ROUTINES
+;=================================================================================
+
+;=================================================================================
+; Write a sequence of bytes to the EEPROM
+; Args:
+;   - ARGS+0: Block / device address. Three bits: 00000BDD
+;   - ARGS+1: High byte of target address on the EEPROM
+;   - ARGS+2: Low byte of target address on the EEPROM
+;   - ARGS+3: Low byte of vector pointing to first byte to transmit
+;   - ARGS+4: High byte of vector pointing to first byte to transmit
+;   - ARGS+5: Number of bytes to write (max: 128)
+write_sequence:
+                jsr     _init_sequence
+                ldy     #0              ; start at 0
+.byte_loop:
+                lda     (LOCAL_ADDR_L),y
+                jsr     transmit_byte
+                iny
+                cpy     READ_LENGTH            ; compare with string lengths in TMP1
+                bne     .byte_loop
+                jsr     _stop_condition
+
+                ; wait for write sequence to be completely written to EEPROM.
+                ; This isn't always needed, but it's safer to do so, and doesn't
+                ; waste much time.
+ack_loop:
+                jsr     _start_condition
+                lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     ARGS
+                jsr     transmit_byte   ; send command to EEPROM
+                lda     LAST_ACK_BIT
+                bne     ack_loop
+                rts
+;=================================================================================
+; Read a sequence of bytes from the EEPROM
+; Args:
+;   - ARGS+0: Block / device address. Three bits: 00000BDD
+;   - ARGS+1: High byte of target address on the EEPROM
+;   - ARGS+2: Low byte of target address on the EEPROM
+;   - ARGS+3: Low byte of vector pointing to where to write the first byte
+;   - ARGS+4: High byte of vector pointing to where to write the first byte
+;   - ARGS+5: Number of bytes to read
+.scope
+read_sequence:
+                phx
+                jsr     _init_sequence
+
+                ; Now that the address is set, start read mode
+                jsr     _start_condition
+
+                ; send block / device / read mode (same as used to write the address)
+                lda     #(EEPROM_CMD | READ_MODE)
+                ora     ARGS
+                jsr     transmit_byte   ; send command to EEPROM
+
+                ldy     #0              ; byte counter, counts up to length in ARGS+5
+.byte_loop:
+                jsr     _data_in
+                ldx     #8              ; bit counter, counts down to 0
+.bit_loop:
+                jsr     _clock_high
+                lda     PORTA           ; the eeprom should output the next bit on the data line
+                lsr                     ; shift the reveived bit onto the carry flag
+                rol     BYTE_IN         ; shift the received bit into the the received byte
+                jsr     _clock_low
+                
                 dex
-                bne clear_buffer
-next_key:
-                jsr getc
+                bne     .bit_loop       ; keep going until all 8 bits are shifted in
 
-                cmp #DEL
-                beq .backspace
+                lda     BYTE_IN
+                sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
 
-                jsr putc
+                iny
+                cpy     READ_LENGTH
+                beq     .done           ; no ack for last byte, as per the datasheet
 
-                cmp #SPACE
-                bne .not_a_space
-                lda #0                  ; save 0 instead of space
-.not_a_space:
-                cmp #CR                
-                beq .enter
+                ; ack the reception of the byte
+                jsr     _data_out        ; set the data line as output so we can ackknowledge
 
-                ldx keybuffer_ptr
-                sta keybuffer,x
-                inc keybuffer_ptr
+                lda     PORTA
+                and     #(DATA_PIN^$FF)  ; set data line low to ack
+                sta     PORTA
 
-                bra next_key
-.enter:
-                jsr cr
-                jsr execute_command
-                bra next_command
-.backspace:
-                lda #BS
-                jsr putc
-                lda #" "
-                jsr putc
-                lda #BS
-                jsr putc
+                jsr     _clock_high      ; strobe it into the EEPROM
+                jsr     _clock_low
 
-                lda keybuffer_ptr
-                beq next_key            ; already at start of line
-                dec keybuffer_ptr
-                ldx keybuffer_ptr
-                stz keybuffer,x
-
-                bra next_key
-
-; this loops over all the commands under the commands label
-; each of those points to an entry in the list that contains the
-; command string to match and the address of the routine to execute
-execute_command:
-                ldx #0                  ; index into list of commands
-find_command_loop:
-                lda commands,x          ; load the address of the entry
-                sta tmp1                ; into tmp1 (16 bits)
-                inx
-                lda commands,x
-                sta tmp1+1
-
-                lda (tmp1)              ; see if this is the last entry
-                ora (tmp1+1)            ; check two bytes for 0.
-                beq .done
-
-                jsr match_command
-                inx
-                bra find_command_loop
+                jmp     .byte_loop
 .done:
+                jsr     _data_out
+
+                jsr     _stop_condition
+                plx
+                rts
+.scend
+;=================================================================================
+;               PRIVATE ROUTINES
+;=================================================================================
+
+;=================================================================================
+; This initializes a read or write sequence by generating the start condition,
+; selecting the correct block and device by sending the command to the EEPROM,
+; and setting the internal address pointer to the selected address.
+;
+; Args (sent to read_sequence or write_sequence):
+;   - ARGS+0: Block / device address. Three bits: 00000BDD
+;   - ARGS+1: High byte of target address on the EEPROM
+;   - ARGS+2: Low byte of target address on the EEPROM
+_init_sequence:
+                ; send start condition
+                jsr     _start_condition
+                ; send block / device / write mode
+                lda     ARGS            ; block / device
+                asl                     
+                sta     ARGS
+                lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     ARGS
+                jsr     transmit_byte   ; send command to EEPROM
+
+                ; set high and low bytes of the target address
+                lda     DEVICE_ADDR_H
+                jsr     transmit_byte
+                lda     DEVICE_ADDR_L
+                jsr     transmit_byte
+                rts
+;=================================================================================
+; Send the start condition to the EEPROM
+_start_condition:
+                ; 1. DEACTIVATE BUS
+                lda     PORTA
+                ora     #(DATA_PIN | CLOCK_PIN)      ; clock and data high
+                sta     PORTA
+                ; 2. START CONDITION
+                and     #(DATA_PIN^$FF)     ; clock stays high, data goes low
+                sta     PORTA
+                and     #(CLOCK_PIN^$FF)     ; then pull clock low
+                sta     PORTA
                 rts
 
-; This looks at one command entry and matches it agains what's in the
-; keybuffer.
-; Y:    index into the string to match
-; tmp1: the starting address of the string
-match_command:
-                ldy #0                  ; index into strings
-.compare_char:
-                lda keybuffer,y
-                cmp (tmp1),y
-                bne .done
-                lda keybuffer,y         ; is it the last character?
-                beq .string_matched
-                iny
-                jmp .compare_char
-.string_matched:         
-                iny     ; skip past the 0 at the end of the string
-                sty param_index
-
-                ; tmp1 now points to the command that holds the address
-                ; to jump to. Store that address in command_vector so we
-                ; can jump to it.
-                lda (tmp1), y
-                sta command_vector      
-                iny
-                lda (tmp1), y
-                sta command_vector+1
-
-                jmp (command_vector)
-.done
+;=================================================================================
+; Send the stop condition to the EEPROM
+_stop_condition:
+                lda     PORTA
+                and     #(DATA_PIN^$FF)  ; data low
+                sta     PORTA
+                jsr     _clock_high      ; clock high
+                lda     PORTA               ; TODO: can I get rid of this?
+                ora     #DATA_PIN        ; data high
+                sta     PORTA
                 rts
 
-dump:
-                clc
-                lda #keybuffer
-                adc param_index         ; calculate the start of the param
-                
-                jsr hex_to_byte
-                jsr dump_page
+;=================================================================================
+; Set the data line as input
+_data_in:
+                lda     PORTA_DDR
+                and     #(DATA_PIN^$FF)      ; set data line back to input
+                sta     PORTA_DDR
                 rts
 
-command2:
-                lda #"2"
-                jsr putc
+;=================================================================================
+; Set the data line as input
+_data_out:
+                lda     PORTA_DDR
+                ora     #DATA_PIN       ; set data line to output
+                sta     PORTA_DDR
                 rts
 
-command3:
-                lda #"3"
-                jsr putc
-                rts
+;=================================================================================
+; Transmit one byte to the EEPROM
+; Args:
+;   - A: the byte to transmit
+.scope
+transmit_byte:
+                pha
+                phy
+                sta     BYTE_OUT
+                ldy     #8
+.transmit_loop:
+                ; Set next byte on bus while clock is still low
+                asl     BYTE_OUT        ; shift next bit into carry
+                lda     PORTA
+                bcc     .send_zero
 
-putc:
-                sta $F001
-                rts
-
-getc:
-                lda $f004
-                beq getc
-                rts
-
-hex_to_byte:
-                sta     tmp2            ; we need the address to do lda (tmp2), y
-
-                ldy     #0              ; high byte
-                lda     (tmp2),y
-                jsr     shift_in_nibble
-
-                iny
-                lda     (tmp2),y        ; low byte
-                jsr     shift_in_nibble
-
-                lda     tmp1            ; put the result back in A as return value
-                rts
-shift_in_nibble:
-                cmp     #":"            ; the next ascii char after "9"
-                bcc     .number
-                                        ; assume it's a letter
-                sbc     #87             ; get the letter value
+                ; send one
+                ora     #DATA_PIN
                 jmp     .continue
-.number:
-                sec
-                sbc     #48
-.continue:      
-                ; calculated nibble is now in low nibble
-                ; shift low nibble to high nibble
-                asl 
-                asl 
-                asl 
-                asl
+.send_zero:
+                and     #(DATA_PIN^$FF)
+.continue:
+                and     #(CLOCK_PIN^$FF); make sure clock is low when placing the bit on the bus
+                sta     PORTA
 
-                ; left shift hight nibble into result
-                asl
-                rol     tmp1
-                asl
-                rol     tmp1
-                asl
-                rol     tmp1
-                asl
-                rol     tmp1
+                jsr     _clock_high     ; toggle clock to strobe it into the eeprom
+                jsr     _clock_low
 
+                dey
+                bne     .transmit_loop
+
+                ; After each byte, the EEPROM expects a clock cycle during which 
+                ; it pulls the data line low to signal that the byte was received
+                jsr     _data_in
+                jsr     _clock_high
+                lda     PORTA
+                and     #DATA_PIN       ; only save last bit
+                sta     LAST_ACK_BIT
+                jsr     _clock_low
+                jsr     _data_out
+                ply
+                pla
+                rts
+.scend
+;=================================================================================
+; Toggle clock high
+_clock_high:    ; toggle clock from high to low to strobe the bit into the eeprom
+                lda     PORTA
+                ora     #CLOCK_PIN      ; clock high
+                sta     PORTA
                 rts
 
-dump_page:
-                sta     dump_start+1
-                ldx     #0
-                ldy     #0
-; start of line (new line + start address)
-; x counts up to 16 for each row
-; y counts up to 256 for the whole page of memory
-.next_row:
-                jsr     cr
-                
-                lda     dump_start+1
-                jsr     print_byte_as_hex
-                tya
-                jsr     print_byte_as_hex
-                lda     #" "
-                jsr     putc
-                lda     #" "
-                jsr     putc
-
-                ldx     #0
-; raw bytes
-.next_hex_byte:
-                lda     (dump_start),y
-                jsr     print_byte_as_hex
-                lda     #" "
-                jsr     putc
-                iny
-                inx
-                cpx     #16
-                beq     .ascii
-                cpx     #8
-                bne     .next_hex_byte
-                lda     #" "
-                jsr     putc
-                bra     .next_hex_byte
-; ascii representation
-.ascii
-                ldx     #0
-                tya
-                sec
-                sbc     #16             ; rewind 16 bytes for ascii
-                tay
-                lda     #" "
-                jsr     putc
-                lda     #" "
-                jsr     putc
-.next_ascii_byte:
-                ; ascii: $20-$7E
-                lda     (dump_start),y
-                cmp     #$20            ; space
-                bcc     .not_ascii
-                cmp     #$7F
-                bcs     .not_ascii
-                jsr     putc
-                bra     .continue_ascii_byte
-.not_ascii:
-                lda     #"."
-                jsr     putc
-.continue_ascii_byte:
-                iny
-                beq     .done
-                inx
-                cpx     #16
-                beq     .next_row
-                bra     .next_ascii_byte
-.done:
+;=================================================================================
+; Toggle clock low
+_clock_low:         
+                lda     PORTA       
+                and     #(CLOCK_PIN^$FF)  ; clock low
+                sta     PORTA
                 rts
 
 
-print_byte_as_hex:
-                pha                     ; keep a copy for the low nibble
-
-                lsr                     ; shift high nibble into low nibble
-                lsr
-                lsr
-                lsr
-
-                jsr     print_nibble
-
-                pla                     ; get original value back
-                and     #%00001111      ; reset high nibble
-                jsr     print_nibble
+push:           inc     DATA_STACK_PTR
+                sta     (DATA_STACK_PTR)
                 rts
 
-print_nibble:
-                cmp     #10
-                bcs     .letter         ; >= 10 (hex letter A-F)
-                adc     #48             ; ASCII offset to numbers 0-9
-                jmp     .print
-.letter:
-                adc     #54             ; ASCII offset to letters A-F
-.print:
-                jsr     putc
+pop:           lda     DATA_STACK_PTR
+                cmp     #DATA_STACK_START
+                beq     .underflow
+                clc
+                lda     (DATA_STACK_PTR)
+                dec     DATA_STACK_PTR
                 rts
-
-
-cr:
-                lda     #LF
-                jsr     putc
-                lda     #CR
-                jsr     putc
+.underflow:     sec
+                lda     #0
                 rts
-
-
-commands:
-                .word o_dump, o_command2, o_command3, 0
-
-o_dump:          .byte "dump", 0
-                 .word dump
-o_command2:      .byte "command2", 0
-                 .word command2
-o_command3:      .byte "command3", 0
-                 .word command3
-
-
-; vectors
-                .org $FFFA
-                
-                .word start
-                .word start
-                .word start
