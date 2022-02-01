@@ -17,18 +17,18 @@ JMP_CURSOR_ON:          = JUMP_TABLE_ADDR + 42
 JMP_CURSOR_OFF:         = JUMP_TABLE_ADDR + 45
 JMP_DRAW_PIXEL:         = JUMP_TABLE_ADDR + 48
 JMP_RMV_PIXEL:          = JUMP_TABLE_ADDR + 51
+JMP_INIT_STORAGE:       = JUMP_TABLE_ADDR + 54
+JMP_STOR_READ:          = JUMP_TABLE_ADDR + 57
+JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 
-BYTE_OUT                = $40             ; address used for shifting bytes
-BYTE_IN                 = $41             ; address used to shift reveived bits into
-LAST_ACK_BIT            = $42
-ARGS                    = $43             ; 6 bytes
+tmp1                    = $40             ; address used for shifting bytes
+tmp2                    = $41             ; address used to shift reveived bits into
+tmp3                    = $42
 
-DEVICE_BLOCK            = ARGS+0
-DEVICE_ADDR_H           = ARGS+1
-DEVICE_ADDR_L           = ARGS+2
-LOCAL_ADDR_L            = ARGS+3
-LOCAL_ADDR_H            = ARGS+4
-READ_LENGTH             = ARGS+5
+stor_target_block       = $43          ; ARGS0
+stor_target_addr:       = $44          ; ARGS1/2 (H/L)
+stor_src_addr:          = $46          ; ARGS3/4 (L/H) 
+stor_byte_cnt:          = $48          ; ARGS5
 
 PORTA                   = $6001           ; Data port A
 PORTA_DDR               = $6003           ; Data direction of port A
@@ -44,54 +44,46 @@ READ_MODE               = 1
 DATA_STACK_PTR          = $3f
 ; data stack
 DATA_STACK_START        = $90
+DATA_STACK_END          = $af           ; size = 32 bytes ($20)
 
+; stor_target_block         = $14
+; stor_target_addr          = $15
+; stor_src_addr             = $17
+; stor_byte_cnt             = $19
 
 
                 .org $2000
 
-init:           lda     #DATA_STACK_START
-                sta     DATA_STACK_PTR
+; init:           lda     #DATA_STACK_END
+;                 sta     DATA_STACK_PTR + 1
 
 
-
-start:
-                jsr     init_storage
-                ; lda     #"!"
-                ; sta     $1000
-
+start:          
                 ;   - ARGS+0: Block / device address. Three bits: 00000BDD
-                lda     #%00000100
-                sta     ARGS+0
+                lda     #%00000000
+                sta     stor_target_block
                 ;   - ARGS+1: High byte of target address on the EEPROM
                 lda     #%00000000
-                sta     ARGS+1
+                sta     stor_target_addr
                 ;   - ARGS+2: Low byte of target address on the EEPROM
                 lda     #%00000000
-                sta     ARGS+2
+                sta     stor_target_addr+1
                 ;   - ARGS+3: Low byte of vector pointing to first byte to transmit
                 lda     #<$1000
-                sta     ARGS+3
+                sta     stor_src_addr
                 ;   - ARGS+4: High byte of vector pointing to first byte to transmit
                 lda     #>$1000
-                sta     ARGS+4
+                sta     stor_src_addr+1
                 ;   - ARGS+5: Number of bytes to write (max: 128)
                 lda     #128
-                sta     ARGS+5
+                sta     stor_byte_cnt
 
-                ; jsr     write_sequence
+                ; ; jsr     write_sequence
 
                 jsr     read_sequence
 
-                lda     $1000
-                jsr     JMP_PUTC
-                rts
-
-
-init_storage:
-                lda     PORTA_DDR
-                ora     #(DATA_PIN | CLOCK_PIN)
-                sta     PORTA_DDR
-
+                ; lda     $1000
+                ; jsr     JMP_PUTC
                 rts
 
 
@@ -112,10 +104,10 @@ write_sequence:
                 jsr     _init_sequence
                 ldy     #0              ; start at 0
 .byte_loop:
-                lda     (LOCAL_ADDR_L),y
+                lda     (stor_src_addr),y
                 jsr     transmit_byte
                 iny
-                cpy     READ_LENGTH            ; compare with string lengths in TMP1
+                cpy     stor_byte_cnt            ; compare with string lengths in TMP1
                 bne     .byte_loop
                 jsr     _stop_condition
 
@@ -125,9 +117,9 @@ write_sequence:
 ack_loop:
                 jsr     _start_condition
                 lda     #(EEPROM_CMD | WRITE_MODE)
-                ora     ARGS
+                ora     stor_target_block
                 jsr     transmit_byte   ; send command to EEPROM
-                lda     LAST_ACK_BIT
+                lda     tmp3
                 bne     ack_loop
                 rts
 ;=================================================================================
@@ -139,7 +131,6 @@ ack_loop:
 ;   - ARGS+3: Low byte of vector pointing to where to write the first byte
 ;   - ARGS+4: High byte of vector pointing to where to write the first byte
 ;   - ARGS+5: Number of bytes to read
-.scope
 read_sequence:
                 phx
                 jsr     _init_sequence
@@ -149,7 +140,7 @@ read_sequence:
 
                 ; send block / device / read mode (same as used to write the address)
                 lda     #(EEPROM_CMD | READ_MODE)
-                ora     ARGS
+                ora     stor_target_block
                 jsr     transmit_byte   ; send command to EEPROM
 
                 ldy     #0              ; byte counter, counts up to length in ARGS+5
@@ -160,17 +151,17 @@ read_sequence:
                 jsr     _clock_high
                 lda     PORTA           ; the eeprom should output the next bit on the data line
                 lsr                     ; shift the reveived bit onto the carry flag
-                rol     BYTE_IN         ; shift the received bit into the the received byte
+                rol     tmp2         ; shift the received bit into the the received byte
                 jsr     _clock_low
                 
                 dex
                 bne     .bit_loop       ; keep going until all 8 bits are shifted in
 
-                lda     BYTE_IN
-                sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
+                lda     tmp2
+                sta     (stor_src_addr),y      ; store the byte following the provided vector
 
                 iny
-                cpy     READ_LENGTH
+                cpy     stor_byte_cnt
                 beq     .done           ; no ack for last byte, as per the datasheet
 
                 ; ack the reception of the byte
@@ -190,7 +181,6 @@ read_sequence:
                 jsr     _stop_condition
                 plx
                 rts
-.scend
 ;=================================================================================
 ;               PRIVATE ROUTINES
 ;=================================================================================
@@ -208,17 +198,17 @@ _init_sequence:
                 ; send start condition
                 jsr     _start_condition
                 ; send block / device / write mode
-                lda     ARGS            ; block / device
+                lda     stor_target_block            ; block / device
                 asl                     
-                sta     ARGS
-                lda     #(EEPROM_CMD | WRITE_MODE)
-                ora     ARGS
+                sta     stor_target_block
+                ; lda     #(EEPROM_CMD | WRITE_MODE)
+                ora     #(EEPROM_CMD | WRITE_MODE)
                 jsr     transmit_byte   ; send command to EEPROM
 
-                ; set high and low bytes of the target address
-                lda     DEVICE_ADDR_H
+                ; set high and low bytes of the target address (high first)
+                lda     stor_target_addr
                 jsr     transmit_byte
-                lda     DEVICE_ADDR_L
+                lda     stor_target_addr+1
                 jsr     transmit_byte
                 rts
 ;=================================================================================
@@ -267,15 +257,14 @@ _data_out:
 ; Transmit one byte to the EEPROM
 ; Args:
 ;   - A: the byte to transmit
-.scope
 transmit_byte:
                 pha
                 phy
-                sta     BYTE_OUT
+                sta     tmp1
                 ldy     #8
 .transmit_loop:
                 ; Set next byte on bus while clock is still low
-                asl     BYTE_OUT        ; shift next bit into carry
+                asl     tmp1        ; shift next bit into carry
                 lda     PORTA
                 bcc     .send_zero
 
@@ -300,13 +289,12 @@ transmit_byte:
                 jsr     _clock_high
                 lda     PORTA
                 and     #DATA_PIN       ; only save last bit
-                sta     LAST_ACK_BIT
+                sta     tmp3
                 jsr     _clock_low
                 jsr     _data_out
                 ply
                 pla
                 rts
-.scend
 ;=================================================================================
 ; Toggle clock high
 _clock_high:    ; toggle clock from high to low to strobe the bit into the eeprom
@@ -324,17 +312,17 @@ _clock_low:
                 rts
 
 
-push:           inc     DATA_STACK_PTR
-                sta     (DATA_STACK_PTR)
-                rts
+; push:           inc     DATA_STACK_PTR
+;                 sta     (DATA_STACK_PTR)
+;                 rts
 
-pop:           lda     DATA_STACK_PTR
-                cmp     #DATA_STACK_START
-                beq     .underflow
-                clc
-                lda     (DATA_STACK_PTR)
-                dec     DATA_STACK_PTR
-                rts
-.underflow:     sec
-                lda     #0
-                rts
+; pop:           lda     DATA_STACK_PTR
+;                 cmp     #DATA_STACK_START
+;                 beq     .underflow
+;                 clc
+;                 lda     (DATA_STACK_PTR)
+;                 dec     DATA_STACK_PTR
+;                 rts
+; .underflow:     sec
+;                 lda     #0
+;                 rts
