@@ -22,13 +22,13 @@ JMP_STOR_READ:          = JUMP_TABLE_ADDR + 57
 JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 
 tmp1                    = $40             ; address used for shifting bytes
-tmp2                    = $41             ; address used to shift reveived bits into
-tmp3                    = $42
+tmp2                    = $42             ; address used to shift reveived bits into
+tmp3                    = $44
 
-stor_target_block       = $43          ; ARGS0
-stor_target_addr:       = $44          ; ARGS1/2 (H/L)
-stor_src_addr:          = $46          ; ARGS3/4 (L/H) 
-stor_byte_cnt:          = $48          ; ARGS5
+stor_target_block       = $46          ; ARGS0
+stor_target_addr:       = $48          ; ARGS1/2 (H/L)
+stor_src_addr:          = $4a          ; ARGS3/4 (L/H) 
+stor_byte_cnt:          = $4c          ; ARGS5
 
 PORTA                   = $6001           ; Data port A
 PORTA_DDR               = $6003           ; Data direction of port A
@@ -40,50 +40,19 @@ EEPROM_CMD              = %10100000
 WRITE_MODE              = 0
 READ_MODE               = 1
 
-
-DATA_STACK_PTR          = $3f
-; data stack
-DATA_STACK_START        = $90
-DATA_STACK_END          = $af           ; size = 32 bytes ($20)
-
-; stor_target_block         = $14
-; stor_target_addr          = $15
-; stor_src_addr             = $17
-; stor_byte_cnt             = $19
-
+CURRENT_DRIVE           = $40
+LOAD_ADDRESS            = $1000
 
                 .org $2000
 
-; init:           lda     #DATA_STACK_END
-;                 sta     DATA_STACK_PTR + 1
+start:          lda     #0
+                sta     CURRENT_DRIVE
 
+                ldx     #1              ; number of pages
+                lda     #0              ; start page on EEPROM
 
-start:          
-                ;   - ARGS+0: Block / device address. Three bits: 00000BDD
-                lda     #%00000000
-                sta     stor_target_block
-                ;   - ARGS+1: High byte of target address on the EEPROM
-                lda     #%00000000
-                sta     stor_target_addr
-                ;   - ARGS+2: Low byte of target address on the EEPROM
-                lda     #%00000000
-                sta     stor_target_addr+1
-                ;   - ARGS+3: Low byte of vector pointing to first byte to transmit
-                lda     #<$1000
-                sta     stor_src_addr
-                ;   - ARGS+4: High byte of vector pointing to first byte to transmit
-                lda     #>$1000
-                sta     stor_src_addr+1
-                ;   - ARGS+5: Number of bytes to write (max: 128)
-                lda     #128
-                sta     stor_byte_cnt
+                jsr     read_pages
 
-                ; ; jsr     write_sequence
-
-                jsr     read_sequence
-
-                ; lda     $1000
-                ; jsr     JMP_PUTC
                 rts
 
 
@@ -93,13 +62,6 @@ start:
 
 ;=================================================================================
 ; Write a sequence of bytes to the EEPROM
-; Args:
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
-;   - ARGS+3: Low byte of vector pointing to first byte to transmit
-;   - ARGS+4: High byte of vector pointing to first byte to transmit
-;   - ARGS+5: Number of bytes to write (max: 128)
 write_sequence:
                 jsr     _init_sequence
                 ldy     #0              ; start at 0
@@ -122,63 +84,88 @@ ack_loop:
                 lda     tmp3
                 bne     ack_loop
                 rts
-;=================================================================================
-; Read a sequence of bytes from the EEPROM
-; Args:
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
-;   - ARGS+3: Low byte of vector pointing to where to write the first byte
-;   - ARGS+4: High byte of vector pointing to where to write the first byte
-;   - ARGS+5: Number of bytes to read
-read_sequence:
+
+; The main routine to read multiple pages from EEPROM to RAM
+; Arguments:
+; X: number of pages to read
+; A: start page in EEPROM
+read_pages:     ldy     #>LOAD_ADDRESS  ; start page in RAM
+.page_loop:     clc                     ; read BOTTOM 128 bytes
+                jsr     read_packet
+                sec                     ; read TOP 128 bytes
+                jsr     read_packet
+                ina                     ; next page in EEPROM
+                iny                     ; next page in RAM
+                dex                     ; x was passed as an arg
+                bne     .page_loop
+                rts
+
+; A: EEPROM page
+; Y: RAM page
+; C: BOTTOM/TOP 128 bytes 
+read_packet:    pha
                 phx
+                phy
+
+                ; set up RAM address beofore carry flag is overwritten
+                sty     tmp2+1          ; high RAM byte (page)
+                stz     tmp2            
+                ror     tmp2            ; low byte. 0 if carry clear, 128 if carry set
+
+                ; pha
+                ; lda     tmp2+1
+                ; jsr     JMP_PRINT_HEX
+                ; pla
+
+                ; this includes setting up EEPROM start address
                 jsr     _init_sequence
+                jsr     _read_mode
 
-                ; Now that the address is set, start read mode
-                jsr     _start_condition
+                ldy     #0                      ; byte counter, counts up to 128 bytes (max for this eeprom)
+.byte_loop:     jsr     _data_in
+                jsr     _receive_byte           ; loads the next byte into A
 
-                ; send block / device / read mode (same as used to write the address)
-                lda     #(EEPROM_CMD | READ_MODE)
-                ora     stor_target_block
-                jsr     transmit_byte   ; send command to EEPROM
 
-                ldy     #0              ; byte counter, counts up to length in ARGS+5
-.byte_loop:
-                jsr     _data_in
+                sta     (tmp2),y                ; store the byte following the provided vector
+                iny
+                cpy     #128                    ; see if we've reached 128 bytes yet
+                beq     .done                   ; no ack for last byte, as per the datasheet
+
+                ; ---- ack the reception of the byte
+                jsr     _data_out               ; set the data line as output so we can ackknowledge
+                lda     PORTA
+                and     #(DATA_PIN^$FF)         ; set data line low to ack
+                sta     PORTA
+                jsr     _clock_high             ; strobe the ack into the EEPROM
+                jsr     _clock_low
+                ; ---- end of ack
+                
+                jmp     .byte_loop              ; next byte
+.done:          jsr     _data_out
+
+                jsr     _stop_condition
+                ply
+                plx
+                pla
+                rts
+
+_receive_byte:  phx
+                ldx     tmp2            ; also keep tmp2 "register"
+                phx
+
                 ldx     #8              ; bit counter, counts down to 0
-.bit_loop:
-                jsr     _clock_high
+                ; receive one bit
+.bit_loop:      jsr     _clock_high
                 lda     PORTA           ; the eeprom should output the next bit on the data line
                 lsr                     ; shift the reveived bit onto the carry flag
-                rol     tmp2         ; shift the received bit into the the received byte
+                rol     tmp2            ; shift the received bit into the the received byte
                 jsr     _clock_low
                 
                 dex
                 bne     .bit_loop       ; keep going until all 8 bits are shifted in
-
                 lda     tmp2
-                sta     (stor_src_addr),y      ; store the byte following the provided vector
-
-                iny
-                cpy     stor_byte_cnt
-                beq     .done           ; no ack for last byte, as per the datasheet
-
-                ; ack the reception of the byte
-                jsr     _data_out        ; set the data line as output so we can ackknowledge
-
-                lda     PORTA
-                and     #(DATA_PIN^$FF)  ; set data line low to ack
-                sta     PORTA
-
-                jsr     _clock_high      ; strobe it into the EEPROM
-                jsr     _clock_low
-
-                jmp     .byte_loop
-.done:
-                jsr     _data_out
-
-                jsr     _stop_condition
+                plx
+                stx     tmp2            ; restore tmp2 
                 plx
                 rts
 ;=================================================================================
@@ -189,31 +176,36 @@ read_sequence:
 ; This initializes a read or write sequence by generating the start condition,
 ; selecting the correct block and device by sending the command to the EEPROM,
 ; and setting the internal address pointer to the selected address.
-;
-; Args (sent to read_sequence or write_sequence):
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
-_init_sequence:
-                ; send start condition
-                jsr     _start_condition
-                ; send block / device / write mode
-                lda     stor_target_block            ; block / device
-                asl                     
-                sta     stor_target_block
-                ; lda     #(EEPROM_CMD | WRITE_MODE)
-                ora     #(EEPROM_CMD | WRITE_MODE)
-                jsr     transmit_byte   ; send command to EEPROM
+_init_sequence: pha
+                jsr     _write_mode
 
-                ; set high and low bytes of the target address (high first)
-                lda     stor_target_addr
+                jsr     transmit_byte   ; A = EEPROM page number
+                lda     tmp2            ; shitty
                 jsr     transmit_byte
-                lda     stor_target_addr+1
-                jsr     transmit_byte
+                pla
                 rts
 ;=================================================================================
-; Send the start condition to the EEPROM
+
+_write_mode:    pha
+                jsr     _start_condition
+                lda     CURRENT_DRIVE
+                asl                     
+                ora     #(EEPROM_CMD | WRITE_MODE)
+                jsr     transmit_byte   ; send command to EEPROM
+                pla
+                rts
+
+_read_mode:     pha
+                jsr     _start_condition
+                lda     CURRENT_DRIVE
+                asl                     
+                ora     #(EEPROM_CMD | READ_MODE)
+                jsr     transmit_byte   ; send command to EEPROM
+                pla
+                rts
+
 _start_condition:
+                pha
                 ; 1. DEACTIVATE BUS
                 lda     PORTA
                 ora     #(DATA_PIN | CLOCK_PIN)      ; clock and data high
@@ -223,6 +215,7 @@ _start_condition:
                 sta     PORTA
                 and     #(CLOCK_PIN^$FF)     ; then pull clock low
                 sta     PORTA
+                pla
                 rts
 
 ;=================================================================================
@@ -239,16 +232,14 @@ _stop_condition:
 
 ;=================================================================================
 ; Set the data line as input
-_data_in:
-                lda     PORTA_DDR
+_data_in:       lda     PORTA_DDR
                 and     #(DATA_PIN^$FF)      ; set data line back to input
                 sta     PORTA_DDR
                 rts
 
 ;=================================================================================
 ; Set the data line as input
-_data_out:
-                lda     PORTA_DDR
+_data_out:      lda     PORTA_DDR
                 ora     #DATA_PIN       ; set data line to output
                 sta     PORTA_DDR
                 rts
@@ -258,7 +249,7 @@ _data_out:
 ; Args:
 ;   - A: the byte to transmit
 transmit_byte:
-                pha
+                pha                     ; keep a copy of A (the byte to transmit)
                 phy
                 sta     tmp1
                 ldy     #8
