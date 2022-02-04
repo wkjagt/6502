@@ -27,11 +27,10 @@ LAST_ACK_BIT            = $52
 ARGS                    = $40             ; 6 bytes
 
 DEVICE_BLOCK            = ARGS+0
-DEVICE_ADDR_H           = ARGS+1
+EEPROM_PAGE             = ARGS+1
 DEVICE_ADDR_L           = ARGS+2
 LOCAL_ADDR_L            = ARGS+3
 LOCAL_ADDR_H            = ARGS+4
-; READ_LENGTH             = ARGS+5
 
 PORTA                   = $6001           ; Data port A
 PORTA_DDR               = $6003           ; Data direction of port A
@@ -65,8 +64,9 @@ READ_MODE               = 1
                 sta     LOCAL_ADDR_H
 
                 lda     #0
-                sta     DEVICE_ADDR_H
+                sta     EEPROM_PAGE
                 stz     DEVICE_ADDR_L
+                
                 stz     DEVICE_BLOCK
 
 ; write these 4 pages to EEPROM
@@ -83,49 +83,38 @@ READ_MODE               = 1
                 bne     .clear_loop
 
 ; read the values back from the EEPROM
-                stz     LOCAL_ADDR_L
-                lda     #$10
-                sta     LOCAL_ADDR_H
-
-                lda     #0
-                sta     DEVICE_ADDR_H
-                stz     DEVICE_ADDR_L
+                sta     EEPROM_PAGE
                 stz     DEVICE_BLOCK
-                
-                jsr      read_forth_block
+
+                jsr      read_pages
                 rts
 
 
-read_forth_block:
+read_pages:
                 pha
                 phy
 
-;               12. Initialize a counter because we need to write in 8 128 byte sequences.
-                ldx     #8
-.next_128_bytes:
-;               13. Everything is now set up to read the first 128 bytes from the device
-                jsr     read_sequence
-
-;               14. Point to the start of the next 128 bytes in RAM
-                clc
-                lda     LOCAL_ADDR_L
-                adc     #128
-                sta     LOCAL_ADDR_L
-                lda     LOCAL_ADDR_H
-                adc     #0
+                lda     #$10
                 sta     LOCAL_ADDR_H
 
-;               15. Point to the start of the next 128 bytes in the device.
-                clc
-                lda     DEVICE_ADDR_L
-                adc     #128
-                sta     DEVICE_ADDR_L
-                lda     DEVICE_ADDR_H
-                adc     #0
-                sta     DEVICE_ADDR_H
+                ldx     #4
+.next_page:
+                stz     LOCAL_ADDR_L
+                stz     DEVICE_ADDR_L
 
+                jsr     read_sequence
+
+                lda     #128
+                sta     LOCAL_ADDR_L
+                sta     DEVICE_ADDR_L
+                jsr     read_sequence
+
+                jsr     read_sequence
+
+                inc     LOCAL_ADDR_H
+                inc     EEPROM_PAGE
                 dex
-                bne     .next_128_bytes
+                bne     .next_page
 
                 ply
                 pla
@@ -156,9 +145,9 @@ write_forth_block:
                 lda     DEVICE_ADDR_L
                 adc     #128
                 sta     DEVICE_ADDR_L
-                lda     DEVICE_ADDR_H
+                lda     EEPROM_PAGE
                 adc     #0
-                sta     DEVICE_ADDR_H
+                sta     EEPROM_PAGE
 
                 dex
                 bne     .next_128_bytes
@@ -286,7 +275,7 @@ _init_sequence:
                 jsr     transmit_byte   ; send command to EEPROM
 
                 ; set high and low bytes of the target address
-                lda     DEVICE_ADDR_H
+                lda     EEPROM_PAGE
                 jsr     transmit_byte
                 lda     DEVICE_ADDR_L
                 jsr     transmit_byte
