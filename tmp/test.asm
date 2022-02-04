@@ -59,7 +59,8 @@ READ_MODE               = 1
 
 ; write the 4 pages to EEPROM
                 stz     EEPROM_PAGE
-                stz     DEVICE_BLOCK
+                lda     #5
+                sta     DEVICE_BLOCK
                 jsr     write_pages
 
 ; clear the 4 pages
@@ -74,8 +75,9 @@ READ_MODE               = 1
 
 ; read the values back from the EEPROM
                 stz     EEPROM_PAGE
-                stz     DEVICE_BLOCK
-                jsr      read_pages
+                lda     #5
+                sta     DEVICE_BLOCK
+                jsr     read_pages
 
                 rts
 
@@ -113,7 +115,7 @@ write_pages:    pha
                 ldx     #4
 .next_page:     stz     LOCAL_ADDR_L
                 stz     DEVICE_ADDR_L
-                jsr     read_sequence
+                jsr     write_sequence
 
                 lda     #128
                 sta     LOCAL_ADDR_L
@@ -135,13 +137,6 @@ write_pages:    pha
 
 ;=================================================================================
 ; Write a sequence of bytes to the EEPROM
-; Args:
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
-;   - ARGS+3: Low byte of vector pointing to first byte to transmit
-;   - ARGS+4: High byte of vector pointing to first byte to transmit
-;   - ARGS+5: Number of bytes to write (max: 128)
 write_sequence:
                 jsr     _init_sequence
                 ldy     #0              ; start at 0
@@ -158,21 +153,17 @@ write_sequence:
                 ; waste much time.
 ack_loop:
                 jsr     _start_condition
-                lda     #(EEPROM_CMD | WRITE_MODE)
-                ora     ARGS
+
+                lda     DEVICE_BLOCK            ; block / device
+                asl                     
+                ora     #(EEPROM_CMD | WRITE_MODE)
+                ; jsr     JMP_PRINT_HEX
                 jsr     transmit_byte   ; send command to EEPROM
                 lda     LAST_ACK_BIT
                 bne     ack_loop
                 rts
 ;=================================================================================
 ; Read a sequence of bytes from the EEPROM
-; Args:
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
-;   - ARGS+3: Low byte of vector pointing to where to write the first byte
-;   - ARGS+4: High byte of vector pointing to where to write the first byte
-;   - ARGS+5: Number of bytes to read
 read_sequence:
                 phx
                 jsr     _init_sequence
@@ -181,11 +172,13 @@ read_sequence:
                 jsr     _start_condition
 
                 ; send block / device / read mode (same as used to write the address)
-                lda     #(EEPROM_CMD | READ_MODE)
-                ora     ARGS
+                lda     DEVICE_BLOCK            ; block / device
+                asl                     
+                ora     #(EEPROM_CMD | READ_MODE)
+                ; jsr     JMP_PRINT_HEX
                 jsr     transmit_byte   ; send command to EEPROM
 
-                ldy     #0              ; byte counter, counts up to length in ARGS+5
+                ldy     #0
 .byte_loop:
                 jsr     _data_in
                 ldx     #8              ; bit counter, counts down to 0
@@ -228,23 +221,14 @@ _done:
 ;=================================================================================
 
 ;=================================================================================
-; This initializes a read or write sequence by generating the start condition,
-; selecting the correct block and device by sending the command to the EEPROM,
-; and setting the internal address pointer to the selected address.
-;
-; Args (sent to read_sequence or write_sequence):
-;   - ARGS+0: Block / device address. Three bits: 00000BDD
-;   - ARGS+1: High byte of target address on the EEPROM
-;   - ARGS+2: Low byte of target address on the EEPROM
 _init_sequence:
                 ; send start condition
                 jsr     _start_condition
                 ; send block / device / write mode
-                lda     ARGS            ; block / device
+                lda     DEVICE_BLOCK            ; block / device
                 asl                     
-                sta     ARGS
-                lda     #(EEPROM_CMD | WRITE_MODE)
-                ora     ARGS
+                ora     #(EEPROM_CMD | WRITE_MODE)
+                ; jsr     JMP_PRINT_HEX
                 jsr     transmit_byte   ; send command to EEPROM
 
                 ; set high and low bytes of the target address
