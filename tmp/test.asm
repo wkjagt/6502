@@ -29,8 +29,8 @@ ARGS                    = $40             ; 6 bytes
 DEVICE_BLOCK            = ARGS+0
 EEPROM_PAGE             = ARGS+1
 DEVICE_ADDR_L           = ARGS+2
-LOCAL_ADDR_L            = ARGS+3
-LOCAL_ADDR_H            = ARGS+4
+RAM_ADDR_L            = ARGS+3
+RAM_ADDR_H            = ARGS+4
 
 PORTA                   = $6001           ; Data port A
 PORTA_DDR               = $6003           ; Data direction of port A
@@ -58,6 +58,7 @@ READ_MODE               = 1
                 bne     .store_loop
 
 ; write the 4 pages to EEPROM
+                ldx     #4              ; number of pages
                 stz     EEPROM_PAGE
                 lda     #5
                 sta     DEVICE_BLOCK
@@ -74,6 +75,7 @@ READ_MODE               = 1
                 bne     .clear_loop
 
 ; read the values back from the EEPROM
+                ldx     #4              ; number of pages
                 stz     EEPROM_PAGE
                 lda     #5
                 sta     DEVICE_BLOCK
@@ -85,19 +87,18 @@ READ_MODE               = 1
 read_pages:     pha
                 phy
                 lda     #$10
-                sta     LOCAL_ADDR_H
+                sta     RAM_ADDR_H
 
-                ldx     #4
-.next_page:     stz     LOCAL_ADDR_L
+.next_page:     stz     RAM_ADDR_L
                 stz     DEVICE_ADDR_L
                 jsr     read_sequence
 
                 lda     #128
-                sta     LOCAL_ADDR_L
+                sta     RAM_ADDR_L
                 sta     DEVICE_ADDR_L
                 jsr     read_sequence
 
-                inc     LOCAL_ADDR_H
+                inc     RAM_ADDR_H
                 inc     EEPROM_PAGE
                 dex
                 bne     .next_page
@@ -110,19 +111,18 @@ read_pages:     pha
 write_pages:    pha
                 phy
                 lda     #$10
-                sta     LOCAL_ADDR_H
+                sta     RAM_ADDR_H
 
-                ldx     #4
-.next_page:     stz     LOCAL_ADDR_L
+.next_page:     stz     RAM_ADDR_L
                 stz     DEVICE_ADDR_L
                 jsr     write_sequence
 
                 lda     #128
-                sta     LOCAL_ADDR_L
+                sta     RAM_ADDR_L
                 sta     DEVICE_ADDR_L
                 jsr     write_sequence
 
-                inc     LOCAL_ADDR_H
+                inc     RAM_ADDR_H
                 inc     EEPROM_PAGE
                 dex
                 bne     .next_page
@@ -139,19 +139,16 @@ write_pages:    pha
 ; Write a sequence of bytes to the EEPROM
 write_sequence: jsr     _init_sequence
                 ldy     #0              ; start at 0
-.byte_loop:     lda     (LOCAL_ADDR_L),y
+.byte_loop:     lda     (RAM_ADDR_L),y
                 jsr     transmit_byte
                 iny
                 cpy     #128            ; compare with string lengths in TMP1
                 bne     .byte_loop
                 jsr     _stop_cond
 
-                ; wait for write sequence to be completely written to EEPROM.
-                ; This isn't always needed, but it's safer to do so, and doesn't
-                ; seem to waste much time.
-ack_loop:       jsr     _init_write
+.ack_loop:      jsr     _init_write
                 lda     LAST_ACK_BIT
-                bne     ack_loop
+                bne     .ack_loop
                 rts
 ;=================================================================================
 ; Read a sequence of bytes from the EEPROM
@@ -172,11 +169,11 @@ read_sequence:  phx
                 bne     .bit_loop       ; keep going until all 8 bits are shifted in
 
                 lda     BYTE_IN
-                sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
+                sta     (RAM_ADDR_L),y      ; store the byte
 
                 iny
                 cpy     #128
-                beq     _done           ; no ack for last byte, as per the datasheet
+                beq     .done           ; no ack for last byte, as per the datasheet
 
                 ; ack the reception of the byte
                 jsr     _data_out        ; set the data line as output so we can ackknowledge
@@ -189,7 +186,7 @@ read_sequence:  phx
                 jsr     _clock_low
 
                 jmp     .byte_loop
-_done:          jsr     _data_out
+.done:          jsr     _data_out
 
                 jsr     _stop_cond
                 plx
