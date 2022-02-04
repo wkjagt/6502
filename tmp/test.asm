@@ -31,7 +31,7 @@ DEVICE_ADDR_H           = ARGS+1
 DEVICE_ADDR_L           = ARGS+2
 LOCAL_ADDR_L            = ARGS+3
 LOCAL_ADDR_H            = ARGS+4
-READ_LENGTH             = ARGS+5
+; READ_LENGTH             = ARGS+5
 
 PORTA                   = $6001           ; Data port A
 PORTA_DDR               = $6003           ; Data direction of port A
@@ -59,17 +59,17 @@ READ_MODE               = 1
                 bne     .store_loop
 
 
+; set up argument values
+                stz     LOCAL_ADDR_L
+                lda     #$10
+                sta     LOCAL_ADDR_H
+
+                lda     #0
+                sta     DEVICE_ADDR_H
+                stz     DEVICE_ADDR_L
+                stz     DEVICE_BLOCK
 
 ; write these 4 pages to EEPROM
-                ldx     #$30
-                lda     #0              ; block number
-                sta     0,x
-                sta     1,x
-
-                sta     2,x             ; local address (low)
-                lda     #$10
-                sta     3,x             ; local address (high)
-
                 jsr      write_forth_block
 
 ; clear the 4 pages
@@ -83,72 +83,27 @@ READ_MODE               = 1
                 bne     .clear_loop
 
 ; read the values back from the EEPROM
-                ldx     #$30
-                lda     #0              ; block number
-                sta     0,x
-                sta     1,x
-
-                sta     2,x             ; local address (low)
+                stz     LOCAL_ADDR_L
                 lda     #$10
-                sta     3,x             ; local address (high)
+                sta     LOCAL_ADDR_H
 
+                lda     #0
+                sta     DEVICE_ADDR_H
+                stz     DEVICE_ADDR_L
+                stz     DEVICE_BLOCK
+                
                 jsr      read_forth_block
-
                 rts
 
 
 read_forth_block:
                 pha
                 phy
-                lda     0,x
-                sta     DEVICE_ADDR_H   ; the argument for the high byte of the target address
-                inx                     ; point to the next 16 bit value on the stack
-                inx
-;               2. Initialize argument for block/device with 0.
-                stz     DEVICE_BLOCK
-;               3. Shift Forth block id left. Carry now contains the device id and the Forth
-;                  block id argument now contains the high byte of the target address.
-                asl     DEVICE_ADDR_H
-;               4. Rotate right into the block/device argument (shift right because device
-;                  id is the right most bit in the argument because of the bit order in
-;                  the byte sent to the physical device)
-                ror     DEVICE_BLOCK
-;               5. Shift right because we need a 0 in between the device id
-;                  and the device block id.
-                lsr     DEVICE_BLOCK
-;               6. Shift Forth block id left. Carry now contains the device block id.
-                asl     DEVICE_ADDR_H
-;               7. Rotate right into the block/device argument. This argument now looks
-;                  like B0D0.0000.
-                ror     DEVICE_BLOCK
-;               8. Shift right five times to have 0000.0B0D so this argument now contains
-;                  the right value for the device block and id.
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-;               9. Since we only start writing at the start of a device block page,
-;                  the low byte of the target address is always 0
-                stz     DEVICE_ADDR_L
-;               10. Set the start address of where to start reading from RAM. This is stored
-;                   in the next position of the data stack.
-                lda     0,x
-                sta     LOCAL_ADDR_L   ; Low byte
-                inx
-                lda     0,x
-                sta     LOCAL_ADDR_H   ; High byte
-                inx
-                phx                    ; preserve the x register so we don't break the data
-                                       ; stack pointer
-;               11. Since we're always reading 128 byte sequences, length can be hardcoded
-                lda     #128
-                sta     READ_LENGTH
 
 ;               12. Initialize a counter because we need to write in 8 128 byte sequences.
                 ldx     #8
 .next_128_bytes:
-;               13. Everything is now set up to write the first 128 bytes to the device
+;               13. Everything is now set up to read the first 128 bytes from the device
                 jsr     read_sequence
 
 ;               14. Point to the start of the next 128 bytes in RAM
@@ -172,7 +127,6 @@ read_forth_block:
                 dex
                 bne     .next_128_bytes
 
-                plx                                 ; restore data stack pointer
                 ply
                 pla
                 rts
@@ -181,50 +135,6 @@ write_forth_block:
                 pha
                 phy
 
-                lda     0,x
-                sta     DEVICE_ADDR_H   ; the argument for the high byte of the target address
-                inx                     ; point to the next 16 bit value on the stack
-                inx
-;               2. Initialize argument for block/device with 0.
-                stz     DEVICE_BLOCK
-;               3. Shift Forth block id left. Carry now contains the device id and the Forth
-;                  block id argument now contains the high byte of the target address.
-                asl     DEVICE_ADDR_H
-;               4. Rotate right into the block/device argument (shift right because device
-;                  id is the right most bit in the argument because of the bit order in
-;                  the byte sent to the physical device)
-                ror     DEVICE_BLOCK
-;               5. Shift right because we need a 0 in between the device id
-;                  and the device block id.
-                lsr     DEVICE_BLOCK
-;               6. Shift Forth block id left. Carry now contains the device block id.
-                asl     DEVICE_ADDR_H
-;               7. Rotate right into the block/device argument. This argument now looks
-;                  like B0D0.0000.
-                ror     DEVICE_BLOCK
-;               8. Shift right five times to have 0000.0B0D so this argument now contains
-;                  the right value for the device block and id.
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-                lsr     DEVICE_BLOCK
-;               9. Since we only start writing at the start of a device block page,
-;                  the low byte of the target address is always 0
-                stz     DEVICE_ADDR_L
-;               10. Set the start address of where to start reading from RAM. This is stored
-;                   in the next position of the data stack.
-                lda     0,x
-                sta     LOCAL_ADDR_L   ; Low byte
-                inx
-                lda     0,x
-                sta     LOCAL_ADDR_H   ; High byte
-                inx
-                phx                    ; preserve the x register so we don't break the data
-                                       ; stack pointer
-;               11. Since we're always reading 128 byte sequences, length can be hardcoded
-                lda     #128
-                sta     READ_LENGTH
 
 ;               12. Initialize a counter because we need to write in 8 128 byte sequences.
                 ldx     #8
@@ -253,7 +163,6 @@ write_forth_block:
                 dex
                 bne     .next_128_bytes
 
-                plx                                 ; restore data stack pointer
                 ply
                 pla
                 rts
@@ -278,7 +187,7 @@ write_sequence:
                 lda     (LOCAL_ADDR_L),y
                 jsr     transmit_byte
                 iny
-                cpy     READ_LENGTH            ; compare with string lengths in TMP1
+                cpy     #128            ; compare with string lengths in TMP1
                 bne     .byte_loop
                 jsr     _stop_condition
 
@@ -332,7 +241,7 @@ read_sequence:
                 sta     (LOCAL_ADDR_L),y      ; store the byte following the provided vector
 
                 iny
-                cpy     READ_LENGTH
+                cpy     #128
                 beq     _done           ; no ack for last byte, as per the datasheet
 
                 ; ack the reception of the byte
