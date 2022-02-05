@@ -24,11 +24,12 @@ JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 BYTE_OUT                = $50             ; address used for shifting bytes
 BYTE_IN                 = $51             ; address used to shift reveived bits into
 LAST_ACK_BIT            = $52
+CURRENT_DRIVE           = $53
 ARGS                    = $40             ; 6 bytes
 
-DEVICE_BLOCK            = ARGS+0
+EEPROM_BLOCK            = ARGS+0
 EEPROM_PAGE             = ARGS+1
-DEVICE_ADDR_L           = ARGS+2
+EEPROM_ADDR_L           = ARGS+2
 RAM_ADDR_L              = ARGS+3
 RAM_ADDR_H              = ARGS+4
 
@@ -42,14 +43,17 @@ EEPROM_CMD              = %10100000
 WRITE_MODE              = 0
 READ_MODE               = 1
 
-
+LOAD_ADDRESS            = $1000
 
                 .org $2000
 
 
+                lda     #0
+                sta     CURRENT_DRIVE
+
 ; fill 4 pages with known bytes
-                ldx #0
-.store_loop:    txa
+                ldx     #0
+.store_loop:    ;txa
                 sta     $1000,x
                 sta     $1100,x
                 sta     $1200,x
@@ -60,8 +64,6 @@ READ_MODE               = 1
 ; write the 4 pages to EEPROM
                 ldx     #4              ; number of pages
                 stz     EEPROM_PAGE
-                lda     #5
-                sta     DEVICE_BLOCK
                 jsr     write_pages
 
 ; clear the 4 pages
@@ -77,8 +79,6 @@ READ_MODE               = 1
 ; read the values back from the EEPROM
                 ldx     #4              ; number of pages
                 stz     EEPROM_PAGE
-                lda     #5
-                sta     DEVICE_BLOCK
                 jsr     read_pages
 
                 rts
@@ -88,16 +88,23 @@ READ_MODE               = 1
 ;=================================================================================
 read_pages:     pha
                 phy
-                lda     #$10
+                phx
+                
+                ldx     CURRENT_DRIVE
+                lda     drive_to_eeprom_block, x
+                sta     EEPROM_BLOCK
+                
+                plx                     ;page count
+                lda     #>LOAD_ADDRESS
                 sta     RAM_ADDR_H
 
 .next_page:     stz     RAM_ADDR_L
-                stz     DEVICE_ADDR_L
+                stz     EEPROM_ADDR_L
                 jsr     read_sequence
 
                 lda     #128
                 sta     RAM_ADDR_L
-                sta     DEVICE_ADDR_L
+                sta     EEPROM_ADDR_L
                 jsr     read_sequence
 
                 inc     RAM_ADDR_H
@@ -112,16 +119,23 @@ read_pages:     pha
 
 write_pages:    pha
                 phy
-                lda     #$10
+                phx
+                
+                ldx     CURRENT_DRIVE
+                lda     drive_to_eeprom_block, x
+                sta     EEPROM_BLOCK
+                
+                plx                     ;page count
+                lda     #>LOAD_ADDRESS
                 sta     RAM_ADDR_H
 
 .next_page:     stz     RAM_ADDR_L
-                stz     DEVICE_ADDR_L
+                stz     EEPROM_ADDR_L
                 jsr     write_sequence
 
                 lda     #128
                 sta     RAM_ADDR_L
-                sta     DEVICE_ADDR_L
+                sta     EEPROM_ADDR_L
                 jsr     write_sequence
 
                 inc     RAM_ADDR_H
@@ -201,14 +215,14 @@ read_sequence:  phx
 _init_sequence: jsr     _init_write
                 lda     EEPROM_PAGE
                 jsr     transmit_byte
-                lda     DEVICE_ADDR_L
+                lda     EEPROM_ADDR_L
                 jsr     transmit_byte
                 rts
 
 ;=================================================================================
 ; Set read mode
 _init_read:     jsr     _start_cond
-                lda     DEVICE_BLOCK            ; block / device
+                lda     EEPROM_BLOCK            ; block / device
                 asl                     
                 ora     #(EEPROM_CMD | READ_MODE)
                 jsr     transmit_byte   ; send command to EEPROM
@@ -216,7 +230,7 @@ _init_read:     jsr     _start_cond
  ;=================================================================================
 ; Set write mode               
 _init_write:    jsr     _start_cond
-                lda     DEVICE_BLOCK            ; block / device
+                lda     EEPROM_BLOCK            ; block / device
                 asl                     
                 ora     #(EEPROM_CMD | WRITE_MODE)
                 jsr     transmit_byte   ; send command to EEPROM
@@ -311,3 +325,8 @@ _clock_low:     lda     PORTA
                 and     #(CLOCK_PIN^$FF)  ; clock low
                 sta     PORTA
                 rts
+
+
+; 2, 3, 7, 8 are not used because there are no EEPROMS connected with A1 high
+drive_to_eeprom_block:
+                .byte   0, 1, 4, 5
