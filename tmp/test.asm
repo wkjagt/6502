@@ -23,7 +23,6 @@ JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 
 BYTE_OUT                = $50             ; address used for shifting bytes
 BYTE_IN                 = $51             ; address used to shift reveived bits into
-LAST_ACK_BIT            = $52
 CURRENT_DRIVE           = $53
 ARGS                    = $40             ; 6 bytes
 
@@ -53,7 +52,7 @@ LOAD_ADDRESS            = $1000
 
 ; fill 4 pages with known bytes
                 ldx     #0
-.store_loop:    ;txa
+.store_loop:    txa
                 sta     $1000,x
                 sta     $1100,x
                 sta     $1200,x
@@ -163,8 +162,7 @@ write_sequence: jsr     _init_sequence
                 jsr     _stop_cond
 
 .ack_loop:      jsr     _init_write
-                lda     LAST_ACK_BIT
-                bne     .ack_loop
+                bcs     .ack_loop
                 rts
 ;=================================================================================
 ; Read a sequence of bytes from the EEPROM
@@ -304,9 +302,7 @@ _continue:      and     #(CLOCK_PIN^$FF); make sure clock is low when placing th
                 ; it pulls the data line low to signal that the byte was received
                 jsr     _data_in
                 jsr     _clock_high
-                lda     PORTA
-                and     #DATA_PIN       ; only save last bit
-                sta     LAST_ACK_BIT
+                lsr     PORTA           ; put ack bit in Carry
                 jsr     _clock_low
                 jsr     _data_out
                 ply
