@@ -21,10 +21,10 @@ JMP_INIT_STORAGE:       = JUMP_TABLE_ADDR + 54
 JMP_STOR_READ:          = JUMP_TABLE_ADDR + 57
 JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 
-BYTE_OUT                = $50             ; address used for shifting bytes
-BYTE_IN                 = $51             ; address used to shift reveived bits into
+BYTE_OUT                = $50           ; address used for shifting bytes
+BYTE_IN                 = $51           ; address used to shift reveived bits into
 CURRENT_DRIVE           = $53
-ARGS                    = $40             ; 6 bytes
+ARGS                    = $40           ; 6 bytes
 
 EEPROM_BLOCK            = ARGS+0
 EEPROM_PAGE             = ARGS+1
@@ -32,8 +32,8 @@ EEPROM_ADDR_L           = ARGS+2
 RAM_ADDR_L              = ARGS+3
 RAM_ADDR_H              = ARGS+4
 
-PORTA                   = $6001           ; Data port A
-PORTA_DDR               = $6003           ; Data direction of port A
+PORTA                   = $6001         ; Data port A
+PORTA_DDR               = $6003         ; Data direction of port A
 
 DATA_PIN                = %01            
 CLOCK_PIN               = %10
@@ -183,20 +183,20 @@ read_sequence:  phx
                 bne     .bit_loop       ; keep going until all 8 bits are shifted in
 
                 lda     BYTE_IN
-                sta     (RAM_ADDR_L),y      ; store the byte
+                sta     (RAM_ADDR_L),y  ; store the byte
 
                 iny
                 cpy     #128
                 beq     .done           ; no ack for last byte, as per the datasheet
 
                 ; ack the reception of the byte
-                jsr     _data_out        ; set the data line as output so we can ackknowledge
+                jsr     _data_out       ; set the data line as output so we can ackknowledge
 
                 lda     PORTA
-                and     #(DATA_PIN^$FF)  ; set data line low to ack
+                and     #(DATA_PIN^$FF) ; set data line low to ack
                 sta     PORTA
 
-                jsr     _clock_high      ; strobe it into the EEPROM
+                jsr     _clock_high     ; strobe it into the EEPROM
                 jsr     _clock_low
 
                 jmp     .byte_loop
@@ -220,7 +220,7 @@ _init_sequence: jsr     _init_write
 ;=================================================================================
 ; Set read mode
 _init_read:     jsr     _start_cond
-                lda     EEPROM_BLOCK            ; block / device
+                lda     EEPROM_BLOCK    ; block / device
                 asl                     
                 ora     #(EEPROM_CMD | READ_MODE)
                 jsr     transmit_byte   ; send command to EEPROM
@@ -228,7 +228,7 @@ _init_read:     jsr     _start_cond
  ;=================================================================================
 ; Set write mode               
 _init_write:    jsr     _start_cond
-                lda     EEPROM_BLOCK            ; block / device
+                lda     EEPROM_BLOCK    ; block / device
                 asl                     
                 ora     #(EEPROM_CMD | WRITE_MODE)
                 jsr     transmit_byte   ; send command to EEPROM
@@ -241,27 +241,27 @@ _start_cond     ; 1. DEACTIVATE BUS
                 ora     #(DATA_PIN | CLOCK_PIN)      ; clock and data high
                 sta     PORTA
                 ; 2. START CONDITION
-                and     #(DATA_PIN^$FF)     ; clock stays high, data goes low
+                and     #(DATA_PIN^$FF) ; clock stays high, data goes low
                 sta     PORTA
-                and     #(CLOCK_PIN^$FF)     ; then pull clock low
+                and     #(CLOCK_PIN^$FF); then pull clock low
                 sta     PORTA
                 rts
 
 ;=================================================================================
 ; Send the stop condition to the EEPROM
 _stop_cond:     lda     PORTA
-                and     #(DATA_PIN^$FF)  ; data low
+                and     #(DATA_PIN^$FF) ; data low
                 sta     PORTA
-                jsr     _clock_high      ; clock high
-                lda     PORTA               ; TODO: can I get rid of this?
-                ora     #DATA_PIN        ; data high
+                jsr     _clock_high     ; clock high
+                lda     PORTA           ; TODO: can I get rid of this?
+                ora     #DATA_PIN       ; data high
                 sta     PORTA
                 rts
 
 ;=================================================================================
 ; Set the data line as input
 _data_in:       lda     PORTA_DDR
-                and     #(DATA_PIN^$FF)      ; set data line back to input
+                and     #(DATA_PIN^$FF) ; set data line back to input
                 sta     PORTA_DDR
                 rts
 
@@ -318,7 +318,7 @@ _clock_high:    lda     PORTA
 ;=================================================================================
 ; Toggle clock low
 _clock_low:     lda     PORTA       
-                and     #(CLOCK_PIN^$FF)  ; clock low
+                and     #(CLOCK_PIN^$FF); clock low
                 sta     PORTA
                 rts
 
