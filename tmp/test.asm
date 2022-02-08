@@ -25,6 +25,8 @@ JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 cursor_x                = $30
 cursor_y                = $31
 cell                    = $32           ; the cell the cursor is on
+prev_cell               = $33
+edit_page               = $34           ; two bytes
 
 RIGHT                   = $1C
 LEFT                    = $1D
@@ -34,34 +36,36 @@ DOWN                    = $1F
                 .org $2000
 
 start:          stz     cell
+                stz     prev_cell
                 jsr     JMP_INIT_SCREEN
+                stz     edit_page
                 lda     #$20
+                sta     edit_page+1
+
                 jsr     JMP_DUMP
                 jsr     move_cursor
 loop:           jsr     JMP_GETC
                 tax                     ; puts pressed char in X
 
-cmp_right:      cpx     #RIGHT
-                bne     cmp_left
+.cmp_right:     cpx     #RIGHT
+                bne     .cmp_left
                 lda     cell
                 and     #%00001111      ; in rightmost column the four last bits are always set
                 cmp     #%00001111
                 beq     ignore
                 inc     cell
-                jsr     move_cursor
-                bra     loop
+                jmp     .move_cursor
 
-cmp_left:       cpx     #LEFT
-                bne     cmp_up
+.cmp_left:      cpx     #LEFT
+                bne     .cmp_up
                 lda     cell
                 and     #%00001111      ; ignore the 4 highest bits
                 beq     ignore          ; last 4 bits need to have something set
                 dec     cell
-                jsr     move_cursor
-                bra     loop
+                jmp     .move_cursor
 
-cmp_up:         cpx     #UP
-                bne     cmp_down
+.cmp_up:        cpx     #UP
+                bne     .cmp_down
                 lda     cell
                 and     #%11110000      ; for the top row the high nibble is always 0
                 beq     ignore
@@ -69,11 +73,10 @@ cmp_up:         cpx     #UP
                 lda     cell
                 sbc     #16
                 sta     cell
-                jsr     move_cursor
-                bra     loop
+                jmp     .move_cursor
 
-cmp_down:       cpx     #DOWN
-                bne     cmp_hex
+.cmp_down:      cpx     #DOWN
+                bne     .cmp_hex
                 lda     cell
                 and     #%11110000      ; for the bottom row, the high nibble is always 1111
                 cmp     #%11110000
@@ -82,11 +85,19 @@ cmp_down:       cpx     #DOWN
                 lda     cell
                 adc     #16
                 sta     cell
+                jmp     .move_cursor
+
+.move_cursor:   lda     prev_cell
+                tay
+                lda     (edit_page), y
+                jsr     JMP_PRINT_HEX   ; put original value back
+                lda     cell
+                sta     prev_cell
                 jsr     move_cursor
                 bra     loop
+                
 
-
-cmp_hex:        jsr     JMP_INIT_SCREEN
+.cmp_hex:       jsr     JMP_INIT_SCREEN
                 rts
 ignore:         bra     loop
                 rts
@@ -129,7 +140,13 @@ move_cursor:    jsr     cursor_home
 .loop3:         jsr     cursor_down
                 dex
                 bne     .loop3
-.done           rts
+.done           
+                lda     #"_"
+                jsr     JMP_PUTC
+                jsr     JMP_PUTC
+                jsr     cursor_Left
+                jsr     cursor_Left
+                rts
 
 
 
