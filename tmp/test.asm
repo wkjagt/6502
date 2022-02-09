@@ -24,10 +24,8 @@ JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
 
 hex_to_byte             = $8412
 
-cursor_x                = $30
-cursor_y                = $31
+
 cell                    = $32           ; the cell the cursor is on
-prev_cell               = $33
 edit_page               = $34           ; 2 bytes
 input                   = $36           ; 2 bytes
 input_pointer           = $38
@@ -39,23 +37,23 @@ LEFT                    = $1D
 UP                      = $1E
 DOWN                    = $1F
 LF                      = $0A
+PGUP                    = $14
+PGDN                    = $15
 LOW_NIBBLE              = %00001111
 HIGH_NIBBLE             = %11110000
 
                 .org $2000
 
-start:          stz     cell
-                stz     prev_cell
-                jsr     JMP_INIT_SCREEN
-                stz     edit_page
+start:          stz     edit_page
                 lda     #$20
                 sta     edit_page+1
+.restart:       stz     cell
                 jsr     reset_input
-
-
-                jsr     JMP_DUMP
-                jsr     move_to_cell
-loop:           jsr     JMP_GETC
+                jsr     JMP_INIT_SCREEN
+                lda     edit_page+1
+                jsr     JMP_DUMP        ; use dump as data view
+                jsr     set_cursor
+.next_key:      jsr     JMP_GETC
                 tax                     ; puts pressed char in X
 
 .cmp_right:     cpx     #RIGHT
@@ -63,79 +61,92 @@ loop:           jsr     JMP_GETC
                 lda     cell
                 and     #LOW_NIBBLE     ; in rightmost column the four last bits are always set
                 cmp     #LOW_NIBBLE
-                beq     loop
+                beq     .next_key
                 lda     #1
                 jsr     update_cell
-                jmp     loop
+                jmp     .next_key
 
 .cmp_left:      cpx     #LEFT
                 bne     .cmp_up
                 lda     cell
                 and     #LOW_NIBBLE     ; ignore the 4 highest bits
-                beq     loop          ; last 4 bits need to have something set
+                beq     .next_key            ; last 4 bits need to have something set
                 lda     #-1
                 jsr     update_cell
-                jmp     loop
+                jmp     .next_key
 
 .cmp_up:        cpx     #UP
                 bne     .cmp_down
                 lda     cell
                 and     #HIGH_NIBBLE    ; for the top row the high nibble is always 0
-                beq     loop
+                beq     .next_key
                 lda     #-16
                 jsr     update_cell
-                jmp     loop
+                jmp     .next_key
 
 .cmp_down:      cpx     #DOWN
                 bne     .cmp_hex
                 lda     cell
                 and     #HIGH_NIBBLE    ; for the bottom row, the high nibble is always 1111
                 cmp     #HIGH_NIBBLE
-                beq     loop
+                beq     .next_key
                 lda     #16
                 jsr     update_cell
-                jmp     loop
+                jmp     .next_key
                 
 .cmp_hex:       cpx     #"0"
-                bcc     .check_enter
+                bcc     .check_save
                 cpx     #":"            ; next ascii after 9
                 bcs     .capital
                 txa
-                bra     .is_hex
+                jsr     hex_input
+                jmp     .next_key
 .capital        cpx     #"A"
-                bcc     .check_enter
+                bcc     .check_save
                 cpx     #"G"
                 bcs     .letter
                 txa
-                bra     .is_hex
+                jsr     hex_input
+                jmp     .next_key
 .letter:        cpx     #"a"
-                bcc     .check_enter
+                bcc     .check_save
                 cpx     #"g"
-                bcs     .check_enter
+                bcs     .check_save
                 txa
                 sec
                 sbc     #32
-.is_hex:        jsr     hex_input
-                jmp     loop
+                jmp     .next_key
 
-
-.check_enter:   cpx     #LF
-                bne     .check_esc
+.check_save:    cpx     #"s"
+                bne     .check_exit
                 lda     #input
                 jsr     hex_to_byte     ; byte into A
                 ldy     cell
                 sta     (edit_page), y
                 jsr     reset_input
-                jmp     loop
+                jsr     JMP_INIT_SCREEN
+                lda     edit_page+1
+                jsr     JMP_DUMP
+                jsr     set_cursor
+                jmp     .next_key
 
-.check_esc:     cpx     #ESC
+.check_exit:    cpx     #"q"
                 beq     .exit
-                jmp     loop
+
+.check_pgup     cpx     #PGUP
+                bne     .check_pgdn
+                inc     edit_page+1
+                jmp     .restart
+
+.check_pgdn     cpx     #PGDN
+                bne     .next
+                dec     edit_page+1
+                jmp     .restart
+
+.next:          jmp     .next_key
 
 .exit:          jsr     JMP_INIT_SCREEN
                 rts
-
-
 
 hex_input:      ldx     input_pointer
                 sta     input,x         ; store char in input
@@ -152,10 +163,8 @@ reset_input:    stz     input
                 stz     input_pointer
                 rts
 
-
-
 update_cell:    beq     .no_adj
-                jsr     move_to_cell
+                jsr     set_cursor
 
                 pha
                 ldy     cell            ; cell before moving
@@ -168,26 +177,26 @@ update_cell:    beq     .no_adj
                 lda     cell
                 adc     tmp1
                 sta     cell
-.no_adj:        jsr     reset_input     ; fall through to move_to_cell
+.no_adj:        jsr     reset_input     ; fall through to set_cursor
 
 
-move_to_cell:   pha
+set_cursor:     pha
                 jsr     cursor_home
                 jsr     cursor_down
                 ldx     #6
-.loop:          jsr     cursor_right
+.to_start:      jsr     cursor_right
                 dex
-                bne     .loop
+                bne     .to_start
 
 .hor_adjust:    lda     cell
                 and     #LOW_NIBBLE      ; only keep low nibble
                 tax
                 beq     .ver_adjust
-.loop2:         jsr     cursor_right
+.right:         jsr     cursor_right
                 jsr     cursor_right
                 jsr     cursor_right
                 dex
-                bne     .loop2
+                bne     .right
 
                 ; if we're at the right of the separation, we need to move one
                 ; more position to the right. 
@@ -203,14 +212,11 @@ move_to_cell:   pha
                 lsr
                 tax
                 beq     .done
-.loop3:         jsr     cursor_down
+.down:          jsr     cursor_down
                 dex
-                bne     .loop3
+                bne     .down
 .done           pla
                 rts
-
-
-
 
 
 cursor_home:    lda     #$01
@@ -220,9 +226,6 @@ cursor_right:   lda     #$1C
                 jsr     JMP_PUTC
                 rts
 cursor_Left:    lda     #$1D
-                jsr     JMP_PUTC
-                rts
-cursor_up:      lda     #$1E
                 jsr     JMP_PUTC
                 rts
 cursor_down:    lda     #$1F
