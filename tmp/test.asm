@@ -54,7 +54,7 @@ start:          stz     cell
 
 
                 jsr     JMP_DUMP
-                jsr     move_cursor
+                jsr     move_to_cell
 loop:           jsr     JMP_GETC
                 tax                     ; puts pressed char in X
 
@@ -65,7 +65,7 @@ loop:           jsr     JMP_GETC
                 cmp     #LOW_NIBBLE
                 beq     loop
                 lda     #1
-                jsr     move_cursor
+                jsr     update_cell
                 jmp     loop
 
 .cmp_left:      cpx     #LEFT
@@ -74,7 +74,7 @@ loop:           jsr     JMP_GETC
                 and     #LOW_NIBBLE     ; ignore the 4 highest bits
                 beq     loop          ; last 4 bits need to have something set
                 lda     #-1
-                jsr     move_cursor
+                jsr     update_cell
                 jmp     loop
 
 .cmp_up:        cpx     #UP
@@ -83,7 +83,7 @@ loop:           jsr     JMP_GETC
                 and     #HIGH_NIBBLE    ; for the top row the high nibble is always 0
                 beq     loop
                 lda     #-16
-                jsr     move_cursor
+                jsr     update_cell
                 jmp     loop
 
 .cmp_down:      cpx     #DOWN
@@ -93,7 +93,7 @@ loop:           jsr     JMP_GETC
                 cmp     #HIGH_NIBBLE
                 beq     loop
                 lda     #16
-                jsr     move_cursor
+                jsr     update_cell
                 jmp     loop
                 
 .cmp_hex:       cpx     #"0"
@@ -154,20 +154,24 @@ reset_input:    stz     input
 
 
 
-; low nibble = x
-; high nibble = y
-move_cursor:    
-                ; set new cursor value
-                beq     .no_adj
+update_cell:    beq     .no_adj
+                jsr     move_to_cell
+
+                pha
+                ldy     cell            ; cell before moving
+                lda     (edit_page),y
+                jsr     JMP_PRINT_HEX
+                pla
+
                 sta     tmp1
                 clc
                 lda     cell
                 adc     tmp1
                 sta     cell
-.no_adj:
+.no_adj:        jsr     reset_input     ; fall through to move_to_cell
 
 
-                jsr     reset_input
+move_to_cell:   pha
                 jsr     cursor_home
                 jsr     cursor_down
                 ldx     #6
@@ -202,7 +206,7 @@ move_cursor:
 .loop3:         jsr     cursor_down
                 dex
                 bne     .loop3
-.done           
+.done           pla
                 rts
 
 
