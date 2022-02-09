@@ -31,6 +31,7 @@ prev_cell               = $33
 edit_page               = $34           ; 2 bytes
 input                   = $36           ; 2 bytes
 input_pointer           = $38
+tmp1                    = $39
 
 ESC                     = $1B
 RIGHT                   = $1C
@@ -63,27 +64,27 @@ loop:           jsr     JMP_GETC
                 and     #LOW_NIBBLE     ; in rightmost column the four last bits are always set
                 cmp     #LOW_NIBBLE
                 beq     loop
-                inc     cell
-                jmp     .move_cursor
+                lda     #1
+                jsr     move_cursor
+                jmp     loop
 
 .cmp_left:      cpx     #LEFT
                 bne     .cmp_up
                 lda     cell
                 and     #LOW_NIBBLE     ; ignore the 4 highest bits
                 beq     loop          ; last 4 bits need to have something set
-                dec     cell
-                jmp     .move_cursor
+                lda     #-1
+                jsr     move_cursor
+                jmp     loop
 
 .cmp_up:        cpx     #UP
                 bne     .cmp_down
                 lda     cell
                 and     #HIGH_NIBBLE    ; for the top row the high nibble is always 0
                 beq     loop
-                sec
-                lda     cell
-                sbc     #16
-                sta     cell
-                jmp     .move_cursor
+                lda     #-16
+                jsr     move_cursor
+                jmp     loop
 
 .cmp_down:      cpx     #DOWN
                 bne     .cmp_hex
@@ -91,14 +92,9 @@ loop:           jsr     JMP_GETC
                 and     #HIGH_NIBBLE    ; for the bottom row, the high nibble is always 1111
                 cmp     #HIGH_NIBBLE
                 beq     loop
-                clc
-                lda     cell
-                adc     #16
-                sta     cell
-                jmp     .move_cursor
-
-.move_cursor:   jsr     move_cursor
-                bra     loop
+                lda     #16
+                jsr     move_cursor
+                jmp     loop
                 
 .cmp_hex:       cpx     #"0"
                 bcc     .check_enter
@@ -160,7 +156,18 @@ reset_input:    stz     input
 
 ; low nibble = x
 ; high nibble = y
-move_cursor:    jsr     reset_input
+move_cursor:    
+                ; set new cursor value
+                beq     .no_adj
+                sta     tmp1
+                clc
+                lda     cell
+                adc     tmp1
+                sta     cell
+.no_adj:
+
+
+                jsr     reset_input
                 jsr     cursor_home
                 jsr     cursor_down
                 ldx     #6
