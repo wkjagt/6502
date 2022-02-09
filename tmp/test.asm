@@ -49,7 +49,8 @@ start:          stz     cell
                 stz     edit_page
                 lda     #$20
                 sta     edit_page+1
-                stz     input_pointer
+                jsr     reset_input
+
 
                 jsr     JMP_DUMP
                 jsr     move_cursor
@@ -128,6 +129,7 @@ loop:           jsr     JMP_GETC
                 jsr     hex_to_byte     ; byte into A
                 ldy     cell
                 sta     (edit_page), y
+                jsr     reset_input
                 jmp     loop
 
 .check_esc:     cpx     #ESC
@@ -140,20 +142,26 @@ loop:           jsr     JMP_GETC
 
 
 hex_input:      ldx     input_pointer
-                sta     input,x
-                jsr     JMP_PUTC
+                sta     input,x         ; store char in input
+                jsr     JMP_PUTC        ; overwrite the char on screen
                 cpx     #1
-                beq     last_pos
+                beq     .last_pos
                 inc     input_pointer
                 rts
-last_pos:       jsr     cursor_Left
+.last_pos:      jsr     cursor_Left
+                rts
+
+reset_input:    stz     input
+                stz     input+1
+                stz     input_pointer
                 rts
 
 
 
 ; low nibble = x
 ; high nibble = y
-move_cursor:    jsr     cursor_home
+move_cursor:    jsr     reset_input
+                jsr     cursor_home
                 jsr     cursor_down
                 ldx     #6
 .loop:          jsr     cursor_right
