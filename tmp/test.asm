@@ -30,6 +30,7 @@ edit_page               = $34           ; 2 bytes
 input                   = $36           ; 2 bytes
 input_pointer           = $38
 tmp1                    = $39
+incomplete_entry        = $40
 
 ESC                     = $1B
 RIGHT                   = $1C
@@ -114,12 +115,14 @@ start:          stz     edit_page
                 bcs     .check_save
                 txa
                 sec
-                sbc     #32
+                sbc     #32             ; make capital letter
                 jsr     hex_input
                 jmp     .next_key
 
 .check_save:    cpx     #"s"
                 bne     .check_exit
+                lda     incomplete_entry
+                bne     .next
                 lda     #input
                 jsr     hex_to_byte     ; byte into A
                 ldy     cell
@@ -148,20 +151,28 @@ start:          stz     edit_page
 
 .exit:          jsr     JMP_INIT_SCREEN
                 rts
-
+; ================================================================================
+;      A hex nibble was input. treat it here
+; ================================================================================
 hex_input:      ldx     input_pointer
-                sta     input,x         ; store char in input
+                sta     input,x         ; store char in input and
                 jsr     JMP_PUTC        ; overwrite the char on screen
                 cpx     #1
                 beq     .last_pos
+                lda     #"_"
+                jsr     JMP_PUTC
+                jsr     cursor_left
                 inc     input_pointer
                 rts
-.last_pos:      jsr     cursor_Left
+.last_pos:      jsr     cursor_left
+                stz     incomplete_entry
                 rts
 
 reset_input:    stz     input
                 stz     input+1
                 stz     input_pointer
+                lda     #1
+                sta     incomplete_entry
                 rts
 
 update_cell:    beq     .no_adj
@@ -226,7 +237,7 @@ cursor_home:    lda     #$01
 cursor_right:   lda     #$1C
                 jsr     JMP_PUTC
                 rts
-cursor_Left:    lda     #$1D
+cursor_left:    lda     #$1D
                 jsr     JMP_PUTC
                 rts
 cursor_down:    lda     #$1F
