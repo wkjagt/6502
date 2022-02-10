@@ -115,6 +115,7 @@ start:          stz     edit_page
                 txa
                 sec
                 sbc     #32
+                jsr     hex_input
                 jmp     .next_key
 
 .check_save:    cpx     #"s"
