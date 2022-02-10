@@ -49,7 +49,7 @@ start:          stz     edit_page
                 lda     #$20
                 sta     edit_page+1
 .restart:       stz     cell
-                jsr     reset_input
+.reload         jsr     reset_input
                 jsr     JMP_INIT_SCREEN
                 lda     edit_page+1
                 jsr     JMP_DUMP        ; use dump as data view
@@ -120,7 +120,7 @@ start:          stz     edit_page
                 jmp     .next_key
 
 .check_save:    cpx     #"s"
-                bne     .check_exit
+                bne     .check_esc
                 lda     incomplete_entry
                 bne     .next
                 lda     #input
@@ -133,6 +133,10 @@ start:          stz     edit_page
                 jsr     JMP_DUMP
                 jsr     set_cursor
                 jmp     .next_key
+
+.check_esc      cpx     #ESC
+                bne     .check_exit
+                jmp     .reload
 
 .check_exit:    cpx     #"q"
                 beq     .exit
