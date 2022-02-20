@@ -1,269 +1,154 @@
 JUMP_TABLE_ADDR         = $300
-JMP_DUMP:               = JUMP_TABLE_ADDR + 0
-JMP_RCV:                = JUMP_TABLE_ADDR + 3
-JMP_INIT_SCREEN:        = JUMP_TABLE_ADDR + 6
-JMP_RUN:                = JUMP_TABLE_ADDR + 9
-JMP_RESET:              = JUMP_TABLE_ADDR + 12
-JMP_PUTC:               = JUMP_TABLE_ADDR + 15
-JMP_PRINT_HEX:          = JUMP_TABLE_ADDR + 18
-JMP_XMODEM_RCV:         = JUMP_TABLE_ADDR + 21
-JMP_GETC:               = JUMP_TABLE_ADDR + 24
-JMP_INIT_KB:            = JUMP_TABLE_ADDR + 27
-JMP_LINE_INPUT:         = JUMP_TABLE_ADDR + 30
-JMP_IRQ_HANDLER:        = JUMP_TABLE_ADDR + 33
-JMP_NMI_HANDLER:        = JUMP_TABLE_ADDR + 36
-JMP_INIT_SERIAL:        = JUMP_TABLE_ADDR + 39
-JMP_CURSOR_ON:          = JUMP_TABLE_ADDR + 42
-JMP_CURSOR_OFF:         = JUMP_TABLE_ADDR + 45
-JMP_DRAW_PIXEL:         = JUMP_TABLE_ADDR + 48
-JMP_RMV_PIXEL:          = JUMP_TABLE_ADDR + 51
-JMP_INIT_STORAGE:       = JUMP_TABLE_ADDR + 54
-JMP_STOR_READ:          = JUMP_TABLE_ADDR + 57
-JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 60
+JMP_RCV:                = JUMP_TABLE_ADDR + 0
+JMP_INIT_SCREEN:        = JUMP_TABLE_ADDR + 3
+JMP_RUN:                = JUMP_TABLE_ADDR + 6
+JMP_RESET:              = JUMP_TABLE_ADDR + 9
+JMP_PUTC:               = JUMP_TABLE_ADDR + 12
+JMP_PRINT_HEX:          = JUMP_TABLE_ADDR + 15
+JMP_XMODEM_RCV:         = JUMP_TABLE_ADDR + 18
+JMP_GETC:               = JUMP_TABLE_ADDR + 21
+JMP_INIT_KB:            = JUMP_TABLE_ADDR + 24
+JMP_LINE_INPUT:         = JUMP_TABLE_ADDR + 27
+JMP_IRQ_HANDLER:        = JUMP_TABLE_ADDR + 30
+JMP_NMI_HANDLER:        = JUMP_TABLE_ADDR + 33
+JMP_INIT_SERIAL:        = JUMP_TABLE_ADDR + 36
+JMP_CURSOR_ON:          = JUMP_TABLE_ADDR + 39
+JMP_CURSOR_OFF:         = JUMP_TABLE_ADDR + 42
+JMP_DRAW_PIXEL:         = JUMP_TABLE_ADDR + 45
+JMP_RMV_PIXEL:          = JUMP_TABLE_ADDR + 48
+JMP_INIT_STORAGE:       = JUMP_TABLE_ADDR + 51
+JMP_STOR_READ:          = JUMP_TABLE_ADDR + 54
+JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 57
 
-                .org    $2000
+stor_eeprom_addr_h      = $0E
+stor_ram_addr_h         = $10
+stor_current_page       = $40           ; reserve
+rcv_size                = $41
+rcv_page                = $42
+
+LAST_PAGE               = $FF
+
+                .org    $1000
+
+                ldx     #0
+clear_buffer:   stz     $0400,x
+                inx
+                bne     clear_buffer
+
+                ; don't make the first 5 pages available
+                lda     #$FF
+                sta     $0400
+                sta     $0401
+                sta     $0402
+                sta     $0403
+                sta     $0404
+
+; write this new clear FAT buffer from RAM to the drive
+clear_fat:      ldx     #1                  ; page count
+                stz     stor_eeprom_addr_h  ; page 0 in eeprom
+                lda     #4
+                sta     stor_ram_addr_h     ; where we stored the 0s
+                jsr     JMP_STOR_WRITE
 
 
-                lda     #"w"
-                jsr     JMP_PUTC
-                lda     #"i"
-                jsr     JMP_PUTC
-                lda     #"l"
-                jsr     JMP_PUTC
-                lda     #"l"
-                jsr     JMP_PUTC
-                lda     #"e"
-                jsr     JMP_PUTC
-                lda     #"m"
-                jsr     JMP_PUTC
+; set up 3 pages of data to copy to a file
+                lda     #3
+                sta     rcv_size
+                lda     #6
+                sta     rcv_page
+
+                ldx     #0
+fill_buffer:    lda     #1
+                sta     $0600,x
+                lda     #2
+                sta     $0700,x
+                lda     #3
+                sta     $0800,x
+                inx
+                bne     fill_buffer
+
+
+;====================================================================================
+;               Read the FAT from the EEPROM into RAM
+;====================================================================================
+init:           jsr     read_fat
+
+;====================================================================================
+;               Save a new file to EEPROM
+;               Start reading from RAM at page held at rcv_page
+;               Read number of pages held at rcv_size
+;====================================================================================
+save_file:      ldy     rcv_size
+.save_page:     ldx     #1              ; one page at a time
+
+                ; set the current page as target
+                lda     stor_current_page
+                sta     stor_eeprom_addr_h
+
+                ; the page in RAM to save
+                lda     rcv_page
+                sta     stor_ram_addr_h
+
+                jsr     JMP_STOR_WRITE  ; write the page
+
+                ; note: this needs to be here because find_empty_page needs to
+                ; not find this page as an empty one
+                lda     #LAST_PAGE        ; mark as last page
+                ldx     stor_current_page ; if it's not, it'll be updated after
+                sta     $0400,x           ; store at the right offset in the FAT in RAM
+
+                dey
+                beq     .done
+
+                inc     rcv_page   ; to read the next page when looping again
+                jsr     find_empty_page     ; find the next available page in the EEPROM
+                ldx     stor_current_page   ; 
+                sta     $0400,x             ; current page in FAT points to next avail page
+                sta     stor_current_page   ; update the current page pointer for the next loop
+
+                bra     .save_page
+.done           jsr     save_fat        ; all done, save the updated FAT back to the EEPROM
                 rts
-                ; jmp $8648
 
-; hex_to_byte             = $8412
+;============================================================
+; Find the next empty page in the FAT
+find_empty_page:phx
+                ldx     #0
+.loop:          lda     $0400,x
+                beq     found
+                inx
+                bra     .loop
 
+                ; this should have found page 5 when the FAT is empty
+found:          txa
+                plx
+                rts
 
-; cell                    = $32           ; the cell the cursor is on
-; edit_page               = $34           ; 2 bytes
-; input                   = $36           ; 2 bytes
-; input_pointer           = $38
-; tmp1                    = $39
-; incomplete_entry        = $40
+                ; read the FAT into RAM page 4
+read_fat:       phx
+                pha
+                ldx     #1                  ; page count
+                stz     stor_eeprom_addr_h  ; page 0 in eeprom
+                lda     #4
+                sta     stor_ram_addr_h     ; where we stored the 0s
+                jsr     JMP_STOR_READ
 
-; ESC                     = $1B
-; RIGHT                   = $1C
-; LEFT                    = $1D
-; UP                      = $1E
-; DOWN                    = $1F
-; LF                      = $0A
-; PGUP                    = $14
-; PGDN                    = $15
-; LOW_NIBBLE              = %00001111
-; HIGH_NIBBLE             = %11110000
+                ; set the current page to the first empty page
+                jsr     find_empty_page
+                sta     stor_current_page
 
-;                 .org $2000
+                pla
+                plx
+                rts
 
-; start:          stz     edit_page
-;                 lda     #$20
-;                 sta     edit_page+1
-; .restart:       stz     cell
-; .reload         jsr     reset_input
-;                 jsr     JMP_INIT_SCREEN
-;                 lda     edit_page+1
-;                 jsr     JMP_DUMP        ; use dump as data view
-;                 jsr     set_cursor
-; .next_key:      jsr     JMP_GETC
-;                 tax                     ; puts pressed char in X
+save_fat:       phx
+                pha
+                ldx     #1                  ; page count
+                stz     stor_eeprom_addr_h  ; page 0 in eeprom
+                lda     #4
+                sta     stor_ram_addr_h     ; where we stored the 0s
+                jsr     JMP_STOR_WRITE
 
-; .cmp_right:     cpx     #RIGHT
-;                 bne     .cmp_left
-;                 lda     cell
-;                 and     #LOW_NIBBLE     ; in rightmost column the four last bits are always set
-;                 cmp     #LOW_NIBBLE
-;                 beq     .next_key
-;                 lda     #1
-;                 jsr     update_cell
-;                 jmp     .next_key
-
-; .cmp_left:      cpx     #LEFT
-;                 bne     .cmp_up
-;                 lda     cell
-;                 and     #LOW_NIBBLE     ; ignore the 4 highest bits
-;                 beq     .next_key            ; last 4 bits need to have something set
-;                 lda     #-1
-;                 jsr     update_cell
-;                 jmp     .next_key
-
-; .cmp_up:        cpx     #UP
-;                 bne     .cmp_down
-;                 lda     cell
-;                 and     #HIGH_NIBBLE    ; for the top row the high nibble is always 0
-;                 beq     .next_key
-;                 lda     #-16
-;                 jsr     update_cell
-;                 jmp     .next_key
-
-; .cmp_down:      cpx     #DOWN
-;                 bne     .cmp_hex
-;                 lda     cell
-;                 and     #HIGH_NIBBLE    ; for the bottom row, the high nibble is always 1111
-;                 cmp     #HIGH_NIBBLE
-;                 beq     .next_key
-;                 lda     #16
-;                 jsr     update_cell
-;                 jmp     .next_key
-                
-; .cmp_hex:       cpx     #"0"
-;                 bcc     .check_save
-;                 cpx     #":"            ; next ascii after 9
-;                 bcs     .capital
-;                 txa
-;                 jsr     hex_input
-;                 jmp     .next_key
-; .capital        cpx     #"A"
-;                 bcc     .check_save
-;                 cpx     #"G"
-;                 bcs     .letter
-;                 txa
-;                 jsr     hex_input
-;                 jmp     .next_key
-; .letter:        cpx     #"a"
-;                 bcc     .check_save
-;                 cpx     #"g"
-;                 bcs     .check_save
-;                 txa
-;                 sec
-;                 sbc     #32             ; make capital letter
-;                 jsr     hex_input
-;                 jmp     .next_key
-
-; .check_save:    cpx     #"s"
-;                 bne     .check_esc
-;                 lda     incomplete_entry
-;                 bne     .next
-;                 lda     #input
-;                 jsr     hex_to_byte     ; byte into A
-;                 ldy     cell
-;                 sta     (edit_page), y
-;                 jsr     reset_input
-;                 jsr     JMP_INIT_SCREEN
-;                 lda     edit_page+1
-;                 jsr     JMP_DUMP
-;                 jsr     set_cursor
-;                 jmp     .next_key
-
-; .check_esc      cpx     #ESC
-;                 bne     .check_exit
-;                 jmp     .reload
-
-; .check_exit:    cpx     #"q"
-;                 beq     .exit
-
-; .check_pgup     cpx     #PGUP
-;                 bne     .check_pgdn
-;                 inc     edit_page+1
-;                 jmp     .restart
-
-; .check_pgdn     cpx     #PGDN
-;                 bne     .next
-;                 dec     edit_page+1
-;                 jmp     .restart
-
-; .next:          jmp     .next_key
-
-; .exit:          jsr     JMP_INIT_SCREEN
-;                 rts
-; ; ================================================================================
-; ;      A hex nibble was input. treat it here
-; ; ================================================================================
-; hex_input:      ldx     input_pointer
-;                 sta     input,x         ; store char in input and
-;                 jsr     JMP_PUTC        ; overwrite the char on screen
-;                 cpx     #1
-;                 beq     .last_pos
-;                 lda     #"_"
-;                 jsr     JMP_PUTC
-;                 jsr     cursor_left
-;                 inc     input_pointer
-;                 rts
-; .last_pos:      jsr     cursor_left
-;                 stz     incomplete_entry
-;                 rts
-
-; reset_input:    stz     input
-;                 stz     input+1
-;                 stz     input_pointer
-;                 lda     #1
-;                 sta     incomplete_entry
-;                 rts
-
-; update_cell:    beq     .no_adj
-;                 jsr     set_cursor
-
-;                 pha
-;                 ldy     cell            ; cell before moving
-;                 lda     (edit_page),y
-;                 jsr     JMP_PRINT_HEX
-;                 pla
-
-;                 sta     tmp1
-;                 clc
-;                 lda     cell
-;                 adc     tmp1
-;                 sta     cell
-; .no_adj:        jsr     reset_input     ; fall through to set_cursor
-
-
-; set_cursor:     pha
-;                 jsr     cursor_home
-;                 jsr     cursor_down
-;                 ldx     #6
-; .to_start:      jsr     cursor_right
-;                 dex
-;                 bne     .to_start
-
-; .hor_adjust:    lda     cell
-;                 and     #LOW_NIBBLE      ; only keep low nibble
-;                 tax
-;                 beq     .ver_adjust
-; .right:         jsr     cursor_right
-;                 jsr     cursor_right
-;                 jsr     cursor_right
-;                 dex
-;                 bne     .right
-
-;                 ; if we're at the right of the separation, we need to move one
-;                 ; more position to the right. 
-;                 lda     cell
-;                 and     #%00001000      ; on the right side, bit 3 is always set
-;                 beq     .ver_adjust
-;                 jsr     cursor_right
-
-; .ver_adjust:    lda     cell
-;                 lsr                     ; only keep high nibble
-;                 lsr
-;                 lsr
-;                 lsr
-;                 tax
-;                 beq     .done
-; .down:          jsr     cursor_down
-;                 dex
-;                 bne     .down
-; .done           pla
-;                 rts
-
-
-; cursor_home:    lda     #$01
-;                 jsr     JMP_PUTC
-;                 rts
-; cursor_right:   lda     #$1C
-;                 jsr     JMP_PUTC
-;                 rts
-; cursor_left:    lda     #$1D
-;                 jsr     JMP_PUTC
-;                 rts
-; cursor_down:    lda     #$1F
-;                 jsr     JMP_PUTC
-;                 rts
-
-; text:
-;                 .byte "This is a program!",0
+                pla
+                plx
+                rts
