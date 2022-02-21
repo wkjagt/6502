@@ -248,6 +248,13 @@ save_dir:       phx
                 plx
                 rts
 
+
+;===============================================================
+;               Add a file to the directory
+;               X contains the start of the first free dir entry
+;                 in page 5 (ie 32 for the 3rd entry)
+;               The inputbuffer is used to read a filename
+;===============================================================
 ; x contains the start of the first free dir entry in page 5 (ie 32 for the 3rd entry)
 add_to_dir:     ldy     #0
                 phx                     ; keep this for a bit later when we save the page number
@@ -256,7 +263,8 @@ add_to_dir:     ldy     #0
                 sta     DIR_BUFFER,x
                 inx
                 iny
-                bra     .loop
+                cpy     #9              ; max length is 8
+                bne     .loop
 .done:          plx                     ; the index to the start of the entr
                 txa
                 clc
@@ -267,4 +275,4 @@ add_to_dir:     ldy     #0
                 rts
 
 
-test_file_name: .byte "filename", 0
+test_file_name: .byte "filenamezzz", 0
