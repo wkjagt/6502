@@ -29,6 +29,7 @@ rcv_page                = $42
 LAST_PAGE               = $FF
 FAT_BUFFER              = $0400
 DIR_BUFFER              = $0500
+MAX_FILE_NAME_LEN       = 8
 __INPUTBFR_START__      = $B0
 
                 .org    $1000
@@ -74,8 +75,11 @@ init:           jsr     read_fat
 ;               Read number of pages held at rcv_size
 ;====================================================================================
 
-save_file:      jsr     find_empty_dir  ; x contains entry index
+save_file:      jsr     find_file       ; to see if it exists already
+                bcc     .file_exists
+                jsr     find_empty_dir  ; x contains entry index
                 bcs     .drive_full
+                
                 jsr     add_to_dir
                 
                 ldy     rcv_size
@@ -110,7 +114,9 @@ save_file:      jsr     find_empty_dir  ; x contains entry index
 .done           jsr     save_fat        ; all done, save the updated FAT back to the EEPROM
                 jsr     save_dir        ; save the updated directory
                 clc                     ; success
-.drive_full:    rts
+.file_exists:
+.drive_full:    sec
+                rts
 
 
 ;============================================================
@@ -259,11 +265,10 @@ save_dir:       phx
 add_to_dir:     ldy     #0
                 phx                     ; keep this for a bit later when we save the page number
 .loop:          lda     __INPUTBFR_START__,y
-                beq     .done
                 sta     DIR_BUFFER,x
                 inx
                 iny
-                cpy     #9              ; max length is 8
+                cpy     #MAX_FILE_NAME_LEN + 1
                 bne     .loop
 .done:          plx                     ; the index to the start of the entr
                 txa
@@ -274,5 +279,43 @@ add_to_dir:     ldy     #0
                 sta     DIR_BUFFER,x
                 rts
 
+;===========================================================================
+;               Find a file in the directory buffer
+;               When the file is found, carry is clear
+;               and the X register points to the start of the entry.
+;               When the file is not found, carry is set, and X
+;               should be ignored
+;===========================================================================
+find_file:      ldx     #0
+.loop:          jsr     match_filename
+                bcc     .found          ; carry clear means file found
+                txa
+                clc
+                adc     #16
+                tax
+                bne     .loop
+                sec                     ; set carry to signal file not found
+.found:         rts
 
-test_file_name: .byte "filenamezzz", 0
+; x: pointer to start of dir entry in RAM
+; return:
+;     carry set:   no match
+;     carry clear: matched
+match_filename: phx
+                phy
+                ldy     #0
+.loop:          lda    DIR_BUFFER,x
+                cmp    __INPUTBFR_START__,y
+                bne    .no_match
+                inx
+                iny
+                cpy     #MAX_FILE_NAME_LEN
+                bne     .loop
+                clc                     ; matched
+                bra     .done
+.no_match:      sec
+.done:          ply
+                plx
+                rts
+
+test_file_name: .byte "newfil", 0  ; too long on purpose to test max length
