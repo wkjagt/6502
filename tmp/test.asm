@@ -19,8 +19,8 @@ JMP_RMV_PIXEL:          = JUMP_TABLE_ADDR + 48
 JMP_INIT_STORAGE:       = JUMP_TABLE_ADDR + 51
 JMP_STOR_READ:          = JUMP_TABLE_ADDR + 54
 JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 57
-JMP_STOR_READ_PAGE:     = JUMP_TABLE_ADDR + 60
-JMP_STOR_WRITE_PAGE:    = JUMP_TABLE_ADDR + 63
+READ_PAGE:              = JUMP_TABLE_ADDR + 60
+WRITE_PAGE:             = JUMP_TABLE_ADDR + 63
 
 drive_page              = $0E
 ram_page                = $10
@@ -87,9 +87,7 @@ save_file:      jsr     find_file       ; to see if it exists already
                 jsr     add_to_dir
                 
                 ldy     rcv_size
-.save_page:     ldx     #1              ; one page at a time
-
-                ; set the current page as target
+.save_page:     ; set the current page as target
                 lda     stor_current_page
                 sta     drive_page
 
@@ -97,7 +95,7 @@ save_file:      jsr     find_file       ; to see if it exists already
                 lda     rcv_page
                 sta     ram_page
 
-                jsr     JMP_STOR_WRITE  ; write the page
+                jsr     WRITE_PAGE      ; write the page
 
                 ; note: this needs to be here because find_empty_page needs to
                 ; not find this page as an empty one
@@ -155,11 +153,10 @@ clear_fat:      ldx     #0
                 sta     FAT_BUFFER+4
 
                 ; write this new clear FAT buffer from RAM to the drive
-                ldx     #1              ; page count
                 stz     drive_page      ; page 0 in eeprom
                 lda     #>FAT_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_WRITE
+                jsr     WRITE_PAGE
                 rts
 
 ;============================================================
@@ -167,11 +164,10 @@ clear_fat:      ldx     #0
 ;============================================================
 read_fat:       phx
                 pha
-                ldx     #1              ; page count
                 stz     drive_page      ; page 0 in eeprom
                 lda     #>FAT_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_READ
+                jsr     READ_PAGE
 
                 ; set the current page to the first empty page
                 jsr     find_empty_page
@@ -186,11 +182,10 @@ read_fat:       phx
 ;============================================================
 save_fat:       phx
                 pha
-                ldx     #1              ; page count
                 stz     drive_page      ; page 0 in eeprom
                 lda     #>FAT_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_WRITE
+                jsr     WRITE_PAGE
 
                 pla
                 plx
@@ -205,11 +200,10 @@ clear_dir:      ldx     #0
                 bne     .clear_buffer
 
                 ldy     #4              ; dir takes up 4 pages
-.clear_page:    ldx     #1              ; page count
-                sty     drive_page      ; page 0 in eeprom
+.clear_page:    sty     drive_page      ; page 0 in eeprom
                 lda     #>DIR_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_WRITE
+                jsr     WRITE_PAGE
                 dey
                 bne     .clear_page     ; don't do page 0 because that's FAT
                 rts
@@ -238,22 +232,20 @@ find_empty_dir: ldx     #0
 ;===============================================================
 ;               Load a page from the directory into RAM
 ;===============================================================
-load_dir:       ldx     #1              ; page count
-                lda     #1              ; first dir page
+load_dir:       lda     #1              ; first dir page
                 sta     drive_page      ; page 0 in eeprom
                 lda     #>DIR_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_READ
+                jsr     READ_PAGE
                 rts
 
 save_dir:       phx
                 pha
-                ldx     #1              ; page count
                 lda     #1              ; first dir page
                 sta     drive_page      ; page 0 in eeprom
                 lda     #>DIR_BUFFER
                 sta     ram_page        ; where we stored the 0s
-                jsr     JMP_STOR_WRITE
+                jsr     WRITE_PAGE
                 pla
                 plx
                 rts
@@ -264,7 +256,6 @@ save_dir:       phx
 ;                 in page 5 (ie 32 for the 3rd entry)
 ;               The inputbuffer is used to read a filename
 ;===============================================================
-; x contains the start of the first free dir entry in page 5 (ie 32 for the 3rd entry)
 add_to_dir:     ldy     #0
                 phx                     ; keep this for a bit later when we save the page number
 .loop:          lda     __INPUTBFR_START__,y
@@ -294,7 +285,7 @@ load_file:      jsr     find_file
                 lda     #6              ; default start page
                 sta     ram_page
                 
-.next_page:     jsr     JMP_STOR_READ_PAGE
+.next_page:     jsr     READ_PAGE
 
                 ldx     drive_page
                 lda     FAT_BUFFER,x    ; next page
