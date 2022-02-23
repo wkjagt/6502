@@ -47,21 +47,21 @@ __INPUTBFR_START__      = $B0
                 bra     .loop
 .done:
 
-; pretend we have received 3 pages into RAM
-                lda     #3
-                sta     rcv_size
-                lda     #6
-                sta     rcv_page
+; ; pretend we have received 3 pages into RAM
+;                 lda     #3
+;                 sta     rcv_size
+;                 lda     #6
+;                 sta     rcv_page
 
-                ldx     #0
-fill_buffer:    lda     #1
-                sta     $0600,x
-                lda     #2
-                sta     $0700,x
-                lda     #3
-                sta     $0800,x
-                inx
-                bne     fill_buffer
+;                 ldx     #0
+; fill_buffer:    lda     #1
+;                 sta     $0600,x
+;                 lda     #2
+;                 sta     $0700,x
+;                 lda     #3
+;                 sta     $0800,x
+;                 inx
+;                 bne     fill_buffer
 
 
 ;====================================================================================
@@ -69,6 +69,8 @@ fill_buffer:    lda     #1
 ;====================================================================================
 init:           jsr     read_fat
                 jsr     load_dir 
+                jsr     load_file
+                rts
 ;====================================================================================
 ;               Save a new file to EEPROM
 ;               Start reading from RAM at page held at rcv_page
@@ -254,7 +256,6 @@ save_dir:       phx
                 plx
                 rts
 
-
 ;===============================================================
 ;               Add a file to the directory
 ;               X contains the start of the first free dir entry
@@ -278,6 +279,44 @@ add_to_dir:     ldy     #0
                 lda     stor_current_page
                 sta     DIR_BUFFER,x
                 rts
+
+
+;===========================================================================
+;               Load file
+;===========================================================================
+load_file:      jsr     find_file
+                bcs     .not_found
+                lda     DIR_BUFFER+8,x      ; start page
+
+                sta     stor_eeprom_addr_h  ; read from dir/fat
+                lda     #6                  ; default start page
+                sta     stor_ram_addr_h
+                pha                         ; store ram write page for later use
+                
+.next_page:     ldx     #1                  ; page count
+                jsr     JMP_STOR_READ
+
+                dec     stor_eeprom_addr_h  ; undo the inc in read_pages
+                                            ; todo: remove when removing the notion of
+                                            ; multiple pages there
+                ldx     stor_eeprom_addr_h
+                lda     FAT_BUFFER,x    ; next page
+                cmp     #$FF            ; last page
+                beq     .done
+
+
+                ; todo: no longer store this on stack once I remove the
+                ; notion of loading multiple pages at once
+                sta     stor_eeprom_addr_h
+                pla                     ; ram write page
+                inc
+                pha
+                inc     stor_ram_addr_h
+                bra     .next_page
+
+.done:          pla                     ; leave stack clean
+.not_found:     rts
+
 
 ;===========================================================================
 ;               Find a file in the directory buffer
