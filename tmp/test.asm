@@ -21,6 +21,7 @@ JMP_STOR_READ:          = JUMP_TABLE_ADDR + 54
 JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 57
 READ_PAGE:              = JUMP_TABLE_ADDR + 60
 WRITE_PAGE:             = JUMP_TABLE_ADDR + 63
+JMP_GET_INPUT:          = JUMP_TABLE_ADDR + 66
 
 drive_page              = $0E
 ram_page                = $10
@@ -36,34 +37,34 @@ __INPUTBFR_START__      = $B0
 
                 .org    $1000
 
-                jsr     clear_fat
-                jsr     clear_dir
+                ; jsr     clear_fat
+                ; jsr     clear_dir
                 
 
 ; add a filename to the input buffer. Later this will have to come from user input
-                ldx     #0
-.loop:          lda     test_file_name,x
-                beq     .done
-                sta     __INPUTBFR_START__,x
-                inx
-                bra     .loop
-.done:
+;                 ldx     #0
+; .loop:          lda     test_file_name,x
+;                 beq     .done
+;                 sta     __INPUTBFR_START__,x
+;                 inx
+;                 bra     .loop
+; .done:
 
 ; pretend we have received 3 pages into RAM
-                lda     #3
-                sta     rcv_size
-                lda     #6
-                sta     rcv_page
+;                 lda     #3
+;                 sta     rcv_size
+;                 lda     #6
+;                 sta     rcv_page
 
-                ldx     #0
-fill_buffer:    lda     #1
-                sta     $0600,x
-                lda     #2
-                sta     $0700,x
-                lda     #3
-                sta     $0800,x
-                inx
-                bne     fill_buffer
+;                 ldx     #0
+; fill_buffer:    lda     #1
+;                 sta     $0600,x
+;                 lda     #2
+;                 sta     $0700,x
+;                 lda     #3
+;                 sta     $0800,x
+;                 inx
+;                 bne     fill_buffer
 
 
 ;====================================================================================
@@ -71,7 +72,11 @@ fill_buffer:    lda     #1
 ;====================================================================================
 init:           jsr     read_fat
                 jsr     load_dir 
+
+load:           jsr     JMP_GET_INPUT
                 jsr     load_file
+                rts
+
 
 ;====================================================================================
 ;               Save a new file to EEPROM
@@ -130,8 +135,6 @@ find_empty_page:phx
                 beq     found
                 inx
                 bra     .loop
-
-                ; this should have found page 5 when the FAT is empty
 found:          txa
                 plx
                 rts
@@ -146,11 +149,11 @@ clear_fat:      ldx     #0
 
                 ; don't make the first 5 pages available
                 lda     #$FF
-                sta     FAT_BUFFER+0
-                sta     FAT_BUFFER+1
-                sta     FAT_BUFFER+2
-                sta     FAT_BUFFER+3
-                sta     FAT_BUFFER+4
+                sta     FAT_BUFFER+0    ; FAT
+                sta     FAT_BUFFER+1    ; DIR 1
+                sta     FAT_BUFFER+2    ; DIR 2
+                sta     FAT_BUFFER+3    ; DIR 3
+                sta     FAT_BUFFER+4    ; DIR 4
 
                 ; write this new clear FAT buffer from RAM to the drive
                 stz     drive_page      ; page 0 in eeprom
