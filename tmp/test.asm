@@ -235,23 +235,6 @@ clear_dir:      ldx     #0
                 rts
 
 ;===============================================================
-;               Find an empty spot in the directory
-;===============================================================
-find_empty_dir: ldx     #0
-.try_next:      lda     DIR_BUFFER,x
-                beq     .found
-                txa
-                clc
-                adc     #16
-                tax
-                beq     .not_found
-                bra     .try_next                
-.found:         clc                     ; "found" flag
-                rts
-.not_found:     sec
-                rts
-
-;===============================================================
 ;               Load a page from one of the 4 DIR pages of
 ;               the directory into RAM.
 ;===============================================================
@@ -278,6 +261,13 @@ dir_args:       lda     dir_page
 ;               X contains the start of the first free dir entry
 ;                 in page 5 (ie 32 for the 3rd entry)
 ;               The inputbuffer is used to read a filename
+;               stor_current_page was initialized by load_fat to point
+;               to the next empry page that can be written to
+;
+;               NOTE: this only interacts with the DIR buffer
+;               currently in RAM. It doesn't need to know anything
+;               about multiple DIR pages in a drive, because 
+;               find_empty_dir is called first and sets X and dir_page
 ;===============================================================
 add_to_dir:     ldy     #0
                 phx                     ; keep this for a bit later when we save the page number
@@ -321,12 +311,29 @@ load_file:      jsr     find_file
 .done:          
 .not_found:     rts
 
+;===============================================================
+;               Find an empty spot in the directory
+;===============================================================
+find_empty_dir: ldx     #0
+.try_next:      lda     DIR_BUFFER,x
+                beq     .found
+                txa
+                clc
+                adc     #16
+                tax
+                beq     .not_found
+                bra     .try_next                
+.found:         clc                     ; "found" flag
+                rts
+.not_found:     sec
+                rts
+                
 ;===========================================================================
 ;               Find a file in the directory buffer
 ;               When the file is found, carry is clear
 ;               and the X register points to the start of the entry.
 ;               When the file is not found, carry is set, and X
-;               should be ignored
+;               should be ignored.
 ;===========================================================================
 find_file:      ldx     #0
 .loop:          jsr     match_filename
