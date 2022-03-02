@@ -23,23 +23,32 @@ READ_PAGE:              = JUMP_TABLE_ADDR + 60
 WRITE_PAGE:             = JUMP_TABLE_ADDR + 63
 JMP_GET_INPUT:          = JUMP_TABLE_ADDR + 66
 
-drive_page              = $0E
-ram_page                = $10
+drive_page              = $10
+ram_page                = $12
 stor_current_page       = $40           ; reserve
-rcv_size                = $41
-rcv_page                = $42
+rcv_size                = $00           ; for realsies
+rcv_page                = $01           ; for realsies
+error_code              = $43
+dir_page                = $44           ; the current dir page read from drive
+                                        ; values: 1-4
 
 LAST_PAGE               = $FF
 FAT_BUFFER              = $0400
 DIR_BUFFER              = $0500
 MAX_FILE_NAME_LEN       = 8
+
+ERR_DIR_FULL            = 1
+ERR_DRIVE_FULL          = 2
+ERR_FILE_NOT_FOUND      = 3
+ERR_FILE_EXISTS         = 4
+
 __INPUTBFR_START__      = $B0
 
-                .org    $1000
+                .org    $0600
 
                 ; jsr     clear_fat
                 ; jsr     clear_dir
-                
+                ; rts
 
 ; add a filename to the input buffer. Later this will have to come from user input
 ;                 ldx     #0
@@ -70,8 +79,14 @@ __INPUTBFR_START__      = $B0
 ;====================================================================================
 ;               Read the FAT from the EEPROM into RAM
 ;====================================================================================
-init:           jsr     read_fat
-                jsr     load_dir 
+init:           lda     #1
+                sta     dir_page
+                jsr     load_fat
+                jsr     load_dir
+                ; rts
+save:           jsr     JMP_GET_INPUT
+                jsr     save_file
+                rts
 
 load:           jsr     JMP_GET_INPUT
                 jsr     load_file
@@ -87,7 +102,7 @@ load:           jsr     JMP_GET_INPUT
 save_file:      jsr     find_file       ; to see if it exists already
                 bcc     .file_exists
                 jsr     find_empty_dir  ; x contains entry index
-                bcs     .drive_full
+                bcs     .dir_full
                 
                 jsr     add_to_dir
                 
@@ -121,8 +136,14 @@ save_file:      jsr     find_file       ; to see if it exists already
 .done           jsr     save_fat        ; all done, save the updated FAT back to the EEPROM
                 jsr     save_dir        ; save the updated directory
                 clc                     ; success
-.file_exists:
-.drive_full:    sec
+                rts
+.file_exists:   lda     ERR_FILE_EXISTS
+                sta     error_code
+                sec
+                rts
+.dir_full:      lda     ERR_DIR_FULL
+                sta     error_code
+                sec
                 rts
 
 
@@ -165,7 +186,7 @@ clear_fat:      ldx     #0
 ;============================================================
 ;               Read FAT into RAM
 ;============================================================
-read_fat:       phx
+load_fat:       phx
                 pha
                 stz     drive_page      ; page 0 in eeprom
                 lda     #>FAT_BUFFER
@@ -182,12 +203,14 @@ read_fat:       phx
 
 ;============================================================
 ;               Save updated FAT to the drive
+;               This saves page 4 in RAM (the FAT buffer) to
+;               page 0 on the EEPROM (where the FAT is stored)
 ;============================================================
 save_fat:       phx
                 pha
                 stz     drive_page      ; page 0 in eeprom
                 lda     #>FAT_BUFFER
-                sta     ram_page        ; where we stored the 0s
+                sta     ram_page
                 jsr     WRITE_PAGE
 
                 pla
@@ -203,9 +226,9 @@ clear_dir:      ldx     #0
                 bne     .clear_buffer
 
                 ldy     #4              ; dir takes up 4 pages
-.clear_page:    sty     drive_page      ; page 0 in eeprom
+.clear_page:    sty     drive_page
                 lda     #>DIR_BUFFER
-                sta     ram_page        ; where we stored the 0s
+                sta     ram_page
                 jsr     WRITE_PAGE
                 dey
                 bne     .clear_page     ; don't do page 0 because that's FAT
@@ -223,34 +246,31 @@ find_empty_dir: ldx     #0
                 tax
                 beq     .not_found
                 bra     .try_next                
-.found:         txa
-                jsr     JMP_PRINT_HEX
-                clc                     ; "found" flag
+.found:         clc                     ; "found" flag
                 rts
 .not_found:     sec
                 rts
 
-
-
 ;===============================================================
-;               Load a page from the directory into RAM
+;               Load a page from one of the 4 DIR pages of
+;               the directory into RAM.
 ;===============================================================
-load_dir:       lda     #1              ; first dir page
-                sta     drive_page      ; page 0 in eeprom
-                lda     #>DIR_BUFFER
-                sta     ram_page        ; where we stored the 0s
+load_dir:       jsr     dir_args
                 jsr     READ_PAGE
                 rts
 
-save_dir:       phx
+save_dir:       phx                     ; todo: document why this is needed
                 pha
-                lda     #1              ; first dir page
-                sta     drive_page      ; page 0 in eeprom
-                lda     #>DIR_BUFFER
-                sta     ram_page        ; where we stored the 0s
+                jsr     dir_args
                 jsr     WRITE_PAGE
                 pla
                 plx
+                rts
+
+dir_args:       lda     dir_page
+                sta     drive_page
+                lda     #>DIR_BUFFER
+                sta     ram_page        ; where we stored the 0s
                 rts
 
 ;===============================================================
@@ -285,7 +305,7 @@ load_file:      jsr     find_file
                 lda     DIR_BUFFER+8,x  ; start page
 
                 sta     drive_page  ; read from dir/fat
-                lda     #6              ; default start page
+                lda     #6              ; default start page, todo: don't hardcode
                 sta     ram_page
                 
 .next_page:     jsr     READ_PAGE
@@ -300,7 +320,6 @@ load_file:      jsr     find_file
                 bra     .next_page
 .done:          
 .not_found:     rts
-
 
 ;===========================================================================
 ;               Find a file in the directory buffer
