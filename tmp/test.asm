@@ -22,6 +22,7 @@ JMP_STOR_WRITE:         = JUMP_TABLE_ADDR + 57
 READ_PAGE:              = JUMP_TABLE_ADDR + 60
 WRITE_PAGE:             = JUMP_TABLE_ADDR + 63
 JMP_GET_INPUT:          = JUMP_TABLE_ADDR + 66
+JMP_CLR_INPUT:          = JUMP_TABLE_ADDR + 69
 
 drive_page              = $10
 ram_page                = $12
@@ -84,21 +85,19 @@ init:           lda     #1
                 jsr     load_fat
                 jsr     load_dir
                 ; rts
-save:           jsr     JMP_GET_INPUT
-                jsr     save_file
-                rts
+; save:           jsr     JMP_GET_INPUT
+;                 jsr     save_file
+;                 rts
 
 load:           jsr     JMP_GET_INPUT
                 jsr     load_file
                 rts
-
 
 ;====================================================================================
 ;               Save a new file to EEPROM
 ;               Start reading from RAM at page held at rcv_page
 ;               Read number of pages held at rcv_size
 ;====================================================================================
-
 save_file:      jsr     find_file       ; to see if it exists already
                 bcc     .file_exists
                 jsr     find_empty_dir  ; x contains entry index
@@ -126,7 +125,7 @@ save_file:      jsr     find_file       ; to see if it exists already
                 dey
                 beq     .done
 
-                inc     rcv_page   ; to read the next page when looping again
+                inc     rcv_page            ; to read the next page when looping again
                 jsr     find_empty_page     ; find the next available page in the EEPROM
                 ldx     stor_current_page   ; 
                 sta     FAT_BUFFER,x        ; current page in FAT points to next avail page
@@ -146,9 +145,9 @@ save_file:      jsr     find_file       ; to see if it exists already
                 sec
                 rts
 
-
 ;============================================================
 ;               Find the next empty page in the FAT
+;               Puts the page number in A
 ;============================================================
 find_empty_page:phx
                 ldx     #0
@@ -294,7 +293,7 @@ load_file:      jsr     find_file
                 bcs     .not_found
                 lda     DIR_BUFFER+8,x  ; start page
 
-                sta     drive_page  ; read from dir/fat
+                sta     drive_page      ; read from dir/fat
                 lda     #6              ; default start page, todo: don't hardcode
                 sta     ram_page
                 
@@ -313,21 +312,37 @@ load_file:      jsr     find_file
 
 ;===============================================================
 ;               Find an empty spot in the directory
+;               This traverses all 4 directory pages,
+;               loading each into RAM, until it finds
+;               an emptry entry.
+;               It leaves the carry flag clear if an entry is found,
+;               or set when no entry is found.
+;               TODO: can we reuse find_file with an empty file name?
 ;===============================================================
-find_empty_dir: ldx     #0
-.try_next:      lda     DIR_BUFFER,x
-                beq     .found
+find_empty_dir: stz     dir_page
+.next_page:     inc     dir_page        ; set next dir page
+                jsr     load_dir        ; load dir page into buffer
+                jsr     .find_in_page
+                bcc     .done
+                lda     dir_page
+                cmp     #4
+                bne     .next_page
+.done:          rts
+
+.find_in_page:  ldx     #0
+.next_entry:    lda     DIR_BUFFER,x
+                beq     .in_page
                 txa
                 clc
                 adc     #16
                 tax
-                beq     .not_found
-                bra     .try_next                
-.found:         clc                     ; "found" flag
+                beq     .not_in_page
+                bra     .next_entry
+.in_page:       clc                     ; "found" flag
                 rts
-.not_found:     sec
+.not_in_page:   sec
                 rts
-                
+
 ;===========================================================================
 ;               Find a file in the directory buffer
 ;               When the file is found, carry is clear
@@ -335,7 +350,18 @@ find_empty_dir: ldx     #0
 ;               When the file is not found, carry is set, and X
 ;               should be ignored.
 ;===========================================================================
-find_file:      ldx     #0
+find_file:      stz     dir_page
+.next_page:     inc     dir_page        ; set next dir page
+                jsr     load_dir        ; load dir page into buffer
+                jsr     .find_in_page
+                bcc     .done
+                lda     dir_page
+                cmp     #4
+                bne     .next_page
+.done:          rts
+
+
+.find_in_page:  ldx     #0
 .loop:          jsr     match_filename
                 bcc     .found          ; carry clear means file found
                 txa
@@ -366,5 +392,3 @@ match_filename: phx
 .done:          ply
                 plx
                 rts
-
-test_file_name: .byte "newfil", 0
