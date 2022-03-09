@@ -92,9 +92,9 @@ init:           lda     #1
                 jsr     show_dir
                 rts
                 ; rts
-; save:           jsr     JMP_GET_INPUT
-;                 jsr     save_file
-;                 rts
+save:           jsr     JMP_GET_INPUT
+                jsr     save_file
+                rts
 
 load:           jsr     JMP_GET_INPUT
                 jsr     load_file
@@ -328,25 +328,26 @@ show_dir:       stz     dir_page
 
 output_dir:     ldx     #0
 .next_item:     ldy     #0
-                lda     DIR_BUFFER,x    ; check if empty dir entry
-                beq     .next_char      ; print without newline results in not printing anything since all zeros
-                lda     #LF             ; todo: in ROM replace with cr routine
-                jsr     JMP_PUTC
-                lda     #CR
-                jsr     JMP_PUTC
 .next_char:     lda     DIR_BUFFER,x
                 beq     .eos            ; end of string, don't print
                 jsr     JMP_PUTC
 .eos            inx
                 iny
-                cpy     #MAX_FILE_NAME_LEN-1
+                cpy     #MAX_FILE_NAME_LEN
                 bne     .next_char
                 txa
                 clc
-                adc     #$10-(MAX_FILE_NAME_LEN-1)              ; skip the next 8 bytes
+                adc     #$10-(MAX_FILE_NAME_LEN)              ; skip the next 8 bytes
                 tax
+                lda     DIR_BUFFER,x    ; check if empty dir entry
+                beq     .skip_item           ; print without newline results in not printing anything since all zeros
+                lda     #LF             ; todo: in ROM replace with cr routine
+                jsr     JMP_PUTC
+                lda     #CR
+                jsr     JMP_PUTC
+.skip_item      cpx     #0
                 bne     .next_item      ; if 0: end of page
-                rts
+.done:          rts
 
 ;============================================================
 ;               Clear the whole directory
