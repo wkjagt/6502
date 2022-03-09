@@ -38,6 +38,9 @@ FAT_BUFFER              = $0400
 DIR_BUFFER              = $0500
 MAX_FILE_NAME_LEN       = 8
 
+LF                      = $0A
+CR                      = $0D
+
 ERR_DIR_FULL            = 1
 ERR_DRIVE_FULL          = 2
 ERR_FILE_NOT_FOUND      = 3
@@ -84,6 +87,10 @@ init:           lda     #1
                 sta     dir_page
                 jsr     load_fat
                 jsr     load_dir
+
+
+                jsr     show_dir
+                rts
                 ; rts
 ; save:           jsr     JMP_GET_INPUT
 ;                 jsr     save_file
@@ -92,6 +99,12 @@ init:           lda     #1
 load:           jsr     JMP_GET_INPUT
                 jsr     load_file
                 rts
+
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+;*******************************************************************************
+;               FILE RELATED ROUTINES
+;*******************************************************************************
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
 ;====================================================================================
 ;               Save a new file to EEPROM
@@ -145,6 +158,84 @@ save_file:      jsr     find_file       ; to see if it exists already
                 sec
                 rts
 
+;===========================================================================
+;               Load file
+;===========================================================================
+load_file:      jsr     find_file
+                bcs     .not_found
+                lda     DIR_BUFFER+8,x  ; start page
+
+                sta     drive_page      ; read from dir/fat
+                lda     #6              ; default start page, todo: don't hardcode
+                sta     ram_page
+                
+.next_page:     jsr     READ_PAGE
+
+                ldx     drive_page
+                lda     FAT_BUFFER,x    ; next page
+                cmp     #$FF            ; last page
+                beq     .done
+
+                sta     drive_page
+                inc     ram_page
+                bra     .next_page
+.done:          
+.not_found:     rts
+
+;===========================================================================
+;               Find a file in the directory buffer
+;               When the file is found, carry is clear
+;               and the X register points to the start of the entry.
+;               When the file is not found, carry is set, and X
+;               should be ignored.
+;===========================================================================
+find_file:      stz     dir_page
+.next_page:     inc     dir_page        ; set next dir page
+                jsr     load_dir        ; load dir page into buffer
+                jsr     .find_in_page
+                bcc     .done
+                lda     dir_page
+                cmp     #4
+                bne     .next_page
+.done:          rts
+.find_in_page:  ldx     #0
+.loop:          jsr     match_filename
+                bcc     .found          ; carry clear means file found
+                txa
+                clc
+                adc     #16
+                tax
+                bne     .loop
+                sec                     ; set carry to signal file not found
+.found:         rts
+
+; x: pointer to start of dir entry in RAM
+; return:
+;     carry set:   no match
+;     carry clear: matched
+match_filename: phx
+                phy
+                ldy     #0
+.loop:          lda    DIR_BUFFER,x
+                cmp    __INPUTBFR_START__,y
+                bne    .no_match
+                inx
+                iny
+                cpy     #MAX_FILE_NAME_LEN
+                bne     .loop
+                clc                     ; matched
+                bra     .done
+.no_match:      sec
+.done:          ply
+                plx
+                rts
+
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+;*******************************************************************************
+;               FAT RELATED ROUTINES
+;*******************************************************************************
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
 ;============================================================
 ;               Find the next empty page in the FAT
 ;               Puts the page number in A
@@ -183,7 +274,7 @@ clear_fat:      ldx     #0
                 rts
 
 ;============================================================
-;               Read FAT into RAM
+;               Load FAT into RAM
 ;============================================================
 load_fat:       phx
                 pha
@@ -214,6 +305,47 @@ save_fat:       phx
 
                 pla
                 plx
+                rts
+
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+;*******************************************************************************
+;               DIR RELATED ROUTINES
+;*******************************************************************************
+;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+
+;============================================================
+;               Show the directory
+;============================================================
+show_dir:       stz     dir_page
+.next_page:     inc     dir_page
+                jsr     load_dir        ; load dir page into buffer
+                jsr     output_dir
+                lda     dir_page
+                cmp     #4
+                bne     .next_page
+.done:          rts
+
+output_dir:     ldx     #0
+.next_item:     ldy     #0
+                lda     DIR_BUFFER,x    ; check if empty dir entry
+                beq     .next_char      ; print without newline results in not printing anything since all zeros
+                lda     #LF             ; todo: in ROM replace with cr routine
+                jsr     JMP_PUTC
+                lda     #CR
+                jsr     JMP_PUTC
+.next_char:     lda     DIR_BUFFER,x
+                beq     .eos            ; end of string, don't print
+                jsr     JMP_PUTC
+.eos            inx
+                iny
+                cpy     #MAX_FILE_NAME_LEN-1
+                bne     .next_char
+                txa
+                clc
+                adc     #$10-(MAX_FILE_NAME_LEN-1)              ; skip the next 8 bytes
+                tax
+                bne     .next_item      ; if 0: end of page
                 rts
 
 ;============================================================
@@ -285,31 +417,6 @@ add_to_dir:     ldy     #0
                 sta     DIR_BUFFER,x
                 rts
 
-
-;===========================================================================
-;               Load file
-;===========================================================================
-load_file:      jsr     find_file
-                bcs     .not_found
-                lda     DIR_BUFFER+8,x  ; start page
-
-                sta     drive_page      ; read from dir/fat
-                lda     #6              ; default start page, todo: don't hardcode
-                sta     ram_page
-                
-.next_page:     jsr     READ_PAGE
-
-                ldx     drive_page
-                lda     FAT_BUFFER,x    ; next page
-                cmp     #$FF            ; last page
-                beq     .done
-
-                sta     drive_page
-                inc     ram_page
-                bra     .next_page
-.done:          
-.not_found:     rts
-
 ;===============================================================
 ;               Find an empty spot in the directory
 ;               This traverses all 4 directory pages,
@@ -343,52 +450,9 @@ find_empty_dir: stz     dir_page
 .not_in_page:   sec
                 rts
 
-;===========================================================================
-;               Find a file in the directory buffer
-;               When the file is found, carry is clear
-;               and the X register points to the start of the entry.
-;               When the file is not found, carry is set, and X
-;               should be ignored.
-;===========================================================================
-find_file:      stz     dir_page
-.next_page:     inc     dir_page        ; set next dir page
-                jsr     load_dir        ; load dir page into buffer
-                jsr     .find_in_page
-                bcc     .done
-                lda     dir_page
-                cmp     #4
-                bne     .next_page
-.done:          rts
-
-
-.find_in_page:  ldx     #0
-.loop:          jsr     match_filename
-                bcc     .found          ; carry clear means file found
-                txa
-                clc
-                adc     #16
-                tax
-                bne     .loop
-                sec                     ; set carry to signal file not found
-.found:         rts
-
-; x: pointer to start of dir entry in RAM
-; return:
-;     carry set:   no match
-;     carry clear: matched
-match_filename: phx
-                phy
-                ldy     #0
-.loop:          lda    DIR_BUFFER,x
-                cmp    __INPUTBFR_START__,y
-                bne    .no_match
-                inx
-                iny
-                cpy     #MAX_FILE_NAME_LEN
-                bne     .loop
-                clc                     ; matched
-                bra     .done
-.no_match:      sec
-.done:          ply
-                plx
+;================================================================
+;               TOOLS
+;================================================================
+format:         jsr     clear_fat
+                jsr     clear_dir
                 rts
