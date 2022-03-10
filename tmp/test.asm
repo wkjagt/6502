@@ -50,36 +50,6 @@ __INPUTBFR_START__      = $B0
 
                 .org    $0600
 
-                ; jsr     clear_fat
-                ; jsr     clear_dir
-                ; rts
-
-; add a filename to the input buffer. Later this will have to come from user input
-;                 ldx     #0
-; .loop:          lda     test_file_name,x
-;                 beq     .done
-;                 sta     __INPUTBFR_START__,x
-;                 inx
-;                 bra     .loop
-; .done:
-
-; pretend we have received 3 pages into RAM
-;                 lda     #3
-;                 sta     rcv_size
-;                 lda     #6
-;                 sta     rcv_page
-
-;                 ldx     #0
-; fill_buffer:    lda     #1
-;                 sta     $0600,x
-;                 lda     #2
-;                 sta     $0700,x
-;                 lda     #3
-;                 sta     $0800,x
-;                 inx
-;                 bne     fill_buffer
-
-
 ;====================================================================================
 ;               Read the FAT from the EEPROM into RAM
 ;====================================================================================
@@ -88,16 +58,14 @@ init:           lda     #1
                 jsr     load_fat
                 jsr     load_dir
 
-
-
                 ; jsr     format
                 jsr     show_dir
 
-                ; rts
-
-                jsr     JMP_GET_INPUT
-                jsr     delete_file
                 rts
+
+                ; jsr     JMP_GET_INPUT
+                ; jsr     delete_file
+                ; rts
 
                 ; rts
                 jsr     JMP_GET_INPUT
@@ -119,6 +87,7 @@ init:           lda     #1
 ;               Save a new file to EEPROM
 ;               Start reading from RAM at page held at rcv_page
 ;               Read number of pages held at rcv_size
+;               The filename is taken from the input buffer
 ;====================================================================================
 save_file:      jsr     find_file       ; to see if it exists already
                 bcc     .file_exists    ; carry clear means file was found
@@ -368,7 +337,7 @@ output_dir:     ldx     #0
                 adc     #$10-(MAX_FILE_NAME_LEN)              ; skip the next 8 bytes
                 tax
                 lda     DIR_BUFFER,x    ; check if empty dir entry
-                beq     .skip_item           ; print without newline results in not printing anything since all zeros
+                beq     .skip_item      ; print without newline results in not printing anything since all zeros
                 lda     #LF             ; todo: in ROM replace with cr routine
                 jsr     JMP_PUTC
                 lda     #CR
@@ -379,6 +348,7 @@ output_dir:     ldx     #0
 
 ;============================================================
 ;               Clear the whole directory
+;               Used when formatting a drive
 ;============================================================
 clear_dir:      ldx     #0
 .clear_buffer:  stz     DIR_BUFFER,x
@@ -437,13 +407,15 @@ add_to_dir:     ldy     #0
                 iny
                 cpy     #MAX_FILE_NAME_LEN + 1
                 bne     .loop
-.done:          plx                     ; the index to the start of the entr
-                txa
-                clc
-                adc     #8
-                tax
-                lda     next_empty_page
-                sta     DIR_BUFFER,x
+.done:          plx                     ; the index to the start of the entry
+                ; txa
+                ; clc
+                ; adc     #8
+                ; tax
+                lda     next_empty_page ; pointer to the first page where the file will be saved
+                sta     DIR_BUFFER+8,x
+                lda     rcv_size        ; save the size in byte 9 of the dir entry
+                sta     DIR_BUFFER+9,x
                 rts
 
 ;===============================================================
