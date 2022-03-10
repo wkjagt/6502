@@ -58,23 +58,24 @@ init:           lda     #1
                 jsr     load_fat
                 jsr     load_dir
 
-                ; jsr     format
+                ; jsr     JMP_GET_INPUT
+                ; jsr     save_file
                 jsr     show_dir
 
-                rts
+                ; rts
 
                 ; jsr     JMP_GET_INPUT
                 ; jsr     delete_file
                 ; rts
 
                 ; rts
-                jsr     JMP_GET_INPUT
-                jsr     save_file
-                jsr     show_dir
-                rts
+                ; jsr     JMP_GET_INPUT
+                ; jsr     save_file
+                ; jsr     show_dir
+                ; rts
 
-                jsr     JMP_GET_INPUT
-                jsr     load_file
+                ; jsr     JMP_GET_INPUT
+                ; jsr     load_file
                 rts
 
 ;* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -324,27 +325,52 @@ show_dir:       stz     dir_page
 .done:          rts
 
 output_dir:     ldx     #0
-.next_item:     ldy     #0
-.next_char:     lda     DIR_BUFFER,x
-                beq     .eos            ; end of string, don't print
+.next_item      lda     DIR_BUFFER,x    ; first char of filename. If 0: empty entry
+                beq     .skip
+
+                jsr     print_file_name
+
+                lda     #" "
                 jsr     JMP_PUTC
-.eos            inx
-                iny
-                cpy     #MAX_FILE_NAME_LEN
-                bne     .next_char
-                txa
-                clc
-                adc     #$10-(MAX_FILE_NAME_LEN)              ; skip the next 8 bytes
-                tax
-                lda     DIR_BUFFER,x    ; check if empty dir entry
-                beq     .skip_item      ; print without newline results in not printing anything since all zeros
+                lda     #" "
+                jsr     JMP_PUTC
+                lda     #"("
+                jsr     JMP_PUTC
+                lda     DIR_BUFFER+9,x
+                jsr     JMP_PRINT_HEX
+                lda     #")"
+                jsr     JMP_PUTC
                 lda     #LF             ; todo: in ROM replace with cr routine
                 jsr     JMP_PUTC
                 lda     #CR
                 jsr     JMP_PUTC
-.skip_item      cpx     #0
-                bne     .next_item      ; if 0: end of page
+
+
+.skip:          txa
+                clc
+                adc     #16
+                beq     .done
+                tax
+
+                bra     .next_item      ; if 0: end of page
 .done:          rts
+
+
+;============================================================
+;               Print the file name in the directory at
+;               index X
+;============================================================
+print_file_name:phx
+                ldy     #MAX_FILE_NAME_LEN
+.next_char:     lda     DIR_BUFFER,x
+                bne     .not_a_space    ; spaces are decoded as 0s
+                lda     #" "
+.not_a_space:   jsr     JMP_PUTC
+                inx
+                dey
+                bne     .next_char
+                plx
+                rts
 
 ;============================================================
 ;               Clear the whole directory
