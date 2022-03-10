@@ -26,7 +26,7 @@ JMP_CLR_INPUT:          = JUMP_TABLE_ADDR + 69
 
 drive_page              = $10
 ram_page                = $12
-stor_current_page       = $40           ; reserve
+next_empty_page         = $40           ; reserve
 rcv_size                = $00           ; for realsies
 rcv_page                = $01           ; for realsies
 error_code              = $43
@@ -89,14 +89,23 @@ init:           lda     #1
                 jsr     load_dir
 
 
+
+                ; jsr     format
                 jsr     show_dir
-                rts
+
                 ; rts
-save:           jsr     JMP_GET_INPUT
-                jsr     save_file
+
+                jsr     JMP_GET_INPUT
+                jsr     delete_file
                 rts
 
-load:           jsr     JMP_GET_INPUT
+                ; rts
+                jsr     JMP_GET_INPUT
+                jsr     save_file
+                jsr     show_dir
+                rts
+
+                jsr     JMP_GET_INPUT
                 jsr     load_file
                 rts
 
@@ -112,48 +121,43 @@ load:           jsr     JMP_GET_INPUT
 ;               Read number of pages held at rcv_size
 ;====================================================================================
 save_file:      jsr     find_file       ; to see if it exists already
-                bcc     .file_exists
+                bcc     .file_exists    ; carry clear means file was found
                 jsr     find_empty_dir  ; x contains entry index
-                bcs     .dir_full
+                bcs     .dir_full       ; carry clear means empty spot was found
                 
-                jsr     add_to_dir
+                jsr     add_to_dir      ; save the file to the directory
                 
-                ldy     rcv_size
-.save_page:     ; set the current page as target
-                lda     stor_current_page
-                sta     drive_page
-
-                ; the page in RAM to save
-                lda     rcv_page
-                sta     ram_page
+                ldy     rcv_size        ; the size of the file that was received over xmodem
+.save_page:     lda     next_empty_page ; pointer to the next empty page in the eeprom
+                sta     drive_page      ; used by the storage routine as target page
+                lda     rcv_page        ; the page where the received file starts in RAM
+                sta     ram_page        ; used by the storage routine as source page
 
                 jsr     WRITE_PAGE      ; write the page
 
-                ; note: this needs to be here because find_empty_page needs to
-                ; not find this page as an empty one
-                lda     #LAST_PAGE        ; mark as last page
-                ldx     stor_current_page ; if it's not, it'll be updated after
-                sta     FAT_BUFFER,x     ; store at the right offset in the FAT in RAM
+                lda     #LAST_PAGE      ; mark the page that was just written to as the last page of the file
+                ldx     next_empty_page ; in the FAT for now. If it's not, it'll be overwritten after. But for
+                sta     FAT_BUFFER,x    ; now we want to avoid find_empty_page to still see it as empty.
 
-                dey
+                dey                     ; keep track of how many pages are left to save
                 beq     .done
 
-                inc     rcv_page            ; to read the next page when looping again
-                jsr     find_empty_page     ; find the next available page in the EEPROM
-                ldx     stor_current_page   ; 
-                sta     FAT_BUFFER,x        ; current page in FAT points to next avail page
-                sta     stor_current_page   ; update the current page pointer for the next loop
+                inc     rcv_page        ; to read the next page when looping again
+                jsr     find_empty_page ; find the next available page in the EEPROM
+                ldx     next_empty_page  
+                sta     FAT_BUFFER,x    ; current page in FAT points to next avail page
+                sta     next_empty_page ; update the current page pointer for the next loop
 
                 bra     .save_page
 .done           jsr     save_fat        ; all done, save the updated FAT back to the EEPROM
                 jsr     save_dir        ; save the updated directory
                 clc                     ; success
                 rts
-.file_exists:   lda     ERR_FILE_EXISTS
+.file_exists:   lda     #ERR_FILE_EXISTS
                 sta     error_code
                 sec
                 rts
-.dir_full:      lda     ERR_DIR_FULL
+.dir_full:      lda     #ERR_DIR_FULL
                 sta     error_code
                 sec
                 rts
@@ -173,14 +177,38 @@ load_file:      jsr     find_file
 
                 ldx     drive_page
                 lda     FAT_BUFFER,x    ; next page
-                cmp     #$FF            ; last page
+                cmp     #$FF            ; last page, todo: use constant
                 beq     .done
 
                 sta     drive_page
                 inc     ram_page
                 bra     .next_page
 .done:          
-.not_found:     rts
+.not_found:     rts                     ; todo: error code
+
+;===========================================================================
+;               Delete a file. This doesn't delete the actual data.
+;               It only frees up the entries in the directory and the
+;               FAT so the pages can be reused.
+;===========================================================================
+delete_file:    jsr     find_file
+                bcs     .not_found
+                lda     DIR_BUFFER+8,x  ; load start page from directory entry
+                jsr     delete_dir
+.loop:          tax                     ; A contains the FAT page number
+                lda     FAT_BUFFER,x
+                stz     FAT_BUFFER,x    ; overwrite the page entry with a 0
+                cmp     #LAST_PAGE      ; see if A (the page number)
+                beq     .done
+                bra     .loop
+.not_found:     lda     #ERR_FILE_NOT_FOUND
+                sta     error_code
+                sec
+                rts
+.done           jsr     save_dir
+                jsr     save_fat
+                clc
+                rts
 
 ;===========================================================================
 ;               Find a file in the directory buffer
@@ -285,7 +313,7 @@ load_fat:       phx
 
                 ; set the current page to the first empty page
                 jsr     find_empty_page
-                sta     stor_current_page
+                sta     next_empty_page
 
                 pla
                 plx
@@ -393,7 +421,7 @@ dir_args:       lda     dir_page
 ;               X contains the start of the first free dir entry
 ;                 in page 5 (ie 32 for the 3rd entry)
 ;               The inputbuffer is used to read a filename
-;               stor_current_page was initialized by load_fat to point
+;               next_empty_page was initialized by load_fat to point
 ;               to the next empry page that can be written to
 ;
 ;               NOTE: this only interacts with the DIR buffer
@@ -414,7 +442,7 @@ add_to_dir:     ldy     #0
                 clc
                 adc     #8
                 tax
-                lda     stor_current_page
+                lda     next_empty_page
                 sta     DIR_BUFFER,x
                 rts
 
@@ -451,9 +479,27 @@ find_empty_dir: stz     dir_page
 .not_in_page:   sec
                 rts
 
+;===========================================================================
+;               Delete an entry from the directory by overwriting the 16
+;               bytes of the entry with 0s. The active directory page needs
+;               to be set for this to work correctly
+;               X: the index to the start of the entry which can be set
+;               using find_file for example.
+;
+;               Overwrites X and Y
+;===========================================================================
+delete_dir:     ldy     #16
+.loop:          stz     DIR_BUFFER,x
+                inx
+                dey
+                bne     .loop
+                rts
+
 ;================================================================
 ;               TOOLS
 ;================================================================
 format:         jsr     clear_fat
                 jsr     clear_dir
+                jsr     load_fat
+                jsr     load_dir
                 rts
