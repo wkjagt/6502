@@ -95,8 +95,8 @@ VDP_SPRITE_ATTR_TABLE_BASE     = $0100
 ; sprite attr table:    table containing position, color etc for each of the
 ;                       32 sprites
 
-VDP_WRITE_PTR              = $54
-VDP_WRITE_END              = $56
+VDP_WRITE_PTR              = $1D
+VDP_WRITE_END              = $1F
 
 BALL_X                      = $58
 BALL_Y                      = $59
@@ -236,6 +236,7 @@ _write_vram:    lda     (VDP_WRITE_PTR)
                 cmp     VDP_WRITE_END+1
                 bne     _next_write
                 rts
+                
 ;===============================tmp==========================
 vdp_enable_display:
                 lda #%11100000                         ; 16k Bl IE M1 M2 0 Siz MAG 
