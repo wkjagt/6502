@@ -72,14 +72,15 @@ match_mode:     phx
 .loop:          lda     (mode_ptr), y
                 jsr     putc
                 lda     (mode_ptr), y
-                beq     .match          ; if we get to the end of string, it's a match
                 cmp     #"*"            ; match anything, this is where the hex values are
                 beq     .next
                 cmp     input + 4, y    ; match to the next char from the input
                 beq     .next
                 sec
                 bra     .done
-.next:          iny
+.next:          lda     (mode_ptr), y
+                beq     .match          ; if we get to the end of string, it's a match
+                iny
                 bra     .loop
 .match:         clc
 .done:          ply
