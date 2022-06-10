@@ -1,6 +1,7 @@
     ; .include "../../pager_os/build/pager_os/pager_os.inc"
 inst_ptr        =      $40     ; 2 bytes
 mode_ptr        =      $42
+found_opcode    =      $44
 
                 .macro inc16
                 inc \1
@@ -36,14 +37,17 @@ find_mode:      lda     #3              ; inst_ptr now points to the matching in
                 inc     inst_ptr+1
 .cont:          lda     (inst_ptr)
                 tax                     ; the number of times to loop
-
-                inc16   inst_ptr        ; go to the next byte which is the first of the
-
+                inc16   inst_ptr        ; go to the next byte which is the first byte of the
+                                        ; pointer to the first available mode of this mnemonic
 .next_mode:     jsr     match_mode
-                inc16   inst_ptr
-                inc16   inst_ptr
+                bcc     .found_mode
+                inc16   inst_ptr        ; point at opcode for this mnemonic / mode
+                inc16   inst_ptr        ; point at first byte of the next available mode
                 dex
                 bne     .next_mode
+.found_mode:    inc16   inst_ptr
+                lda     (inst_ptr)
+                sta     found_opcode
                 rts
 
                 ; inst_ptr points to the first byte of the address of the first
@@ -59,10 +63,18 @@ match_mode:     phx
 
                 ldy     #0
 .loop:          lda     (mode_ptr), y
-                beq     .done
                 jsr     putc
-                iny
+                lda     (mode_ptr), y
+                beq     .match          ; if we get to the end of string, it's a match
+                cmp     #"*"            ; match anything, this is where the hex values are
+                beq     .next
+                cmp     input + 4, y    ; match to the next char from the input
+                beq     .next
+                sec
+                bra     .done
+.next:          iny
                 bra     .loop
+.match:         clc
 .done:          ply
                 plx
                 rts
@@ -87,7 +99,7 @@ match_mnemonic: phx
 putc:           sta     $f001
                 rts
 
-input:          .byte "LDA #20", 0
+input:          .byte "LDA #$20", 0
 
 mode_izx:       .byte "($**,x)", 0, 2
 mode_zp:        .byte "$**", 0, 2
