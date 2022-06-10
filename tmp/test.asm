@@ -12,9 +12,7 @@ found_opcode    =      $44
 
                 .org $600
 
-
-                ldx     #0
-
+find_mnemonic:  ldx     #0
 .loop:          lda     mnemonics,x
                 sta     inst_ptr
                 inx
@@ -25,8 +23,9 @@ found_opcode    =      $44
                 inx
                 cpx     #mnemonics_size
                 bne     .loop
+                bra     .no_match       ; end up here: no match
 .match:         jsr     find_mode
-                rts
+.no_match:      rts
 
 
 find_mode:      lda     #3              ; inst_ptr now points to the matching instruction
@@ -99,7 +98,7 @@ match_mnemonic: phx
 putc:           sta     $f001
                 rts
 
-input:          .byte "LDA #$20", 0
+input:          .byte "BTS $20,x", 0
 
 mode_izx:       .byte "($**,x)", 0, 2
 mode_zp:        .byte "$**", 0, 2
