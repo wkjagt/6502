@@ -1,304 +1,551 @@
-JUMP_TABLE_ADDR         = $300
-RCV                     = JUMP_TABLE_ADDR + 0
-INIT_SCREEN             = JUMP_TABLE_ADDR + 3
-RUN                     = JUMP_TABLE_ADDR + 6
-RESET                   = JUMP_TABLE_ADDR + 9
-PUTC                    = JUMP_TABLE_ADDR + 12
-PRINT_HEX               = JUMP_TABLE_ADDR + 15
-XMODEM_RCV              = JUMP_TABLE_ADDR + 18
-GETC                    = JUMP_TABLE_ADDR + 21
-INIT_KB                 = JUMP_TABLE_ADDR + 24
-LINE_INPUT              = JUMP_TABLE_ADDR + 27
-IRQ_HANDLER             = JUMP_TABLE_ADDR + 30
-NMI_HANDLER             = JUMP_TABLE_ADDR + 33
-INIT_SERIAL             = JUMP_TABLE_ADDR + 36
-CURSOR_ON               = JUMP_TABLE_ADDR + 39
-CURSOR_OFF              = JUMP_TABLE_ADDR + 42
-DRAW_PIXEL              = JUMP_TABLE_ADDR + 45
-RMV_PIXEL               = JUMP_TABLE_ADDR + 48
-INIT_STORAGE            = JUMP_TABLE_ADDR + 51
-STOR_READ               = JUMP_TABLE_ADDR + 54
-STOR_WRITE              = JUMP_TABLE_ADDR + 57
-READ_PAGE               = JUMP_TABLE_ADDR + 60
-WRITE_PAGE              = JUMP_TABLE_ADDR + 63
-GET_INPUT               = JUMP_TABLE_ADDR + 66
-CLR_INPUT               = JUMP_TABLE_ADDR + 69
-LOAD_FAT                = JUMP_TABLE_ADDR + 72
-CLEAR_FAT               = JUMP_TABLE_ADDR + 75
-FIND_EMPTY_PAGE         = JUMP_TABLE_ADDR + 78
-CLEAR_DIR               = JUMP_TABLE_ADDR + 81
-LOAD_DIR                = JUMP_TABLE_ADDR + 84
-SAVE_DIR                = JUMP_TABLE_ADDR + 87
-SHOW_DIR                = JUMP_TABLE_ADDR + 90
-FORMAT_DIVE             = JUMP_TABLE_ADDR + 93
-PRINT_STRING            = JUMP_TABLE_ADDR + 96
-ADD_TO_DIR              = JUMP_TABLE_ADDR + 99
-FIND_EMPTY_DIR          = JUMP_TABLE_ADDR + 102
-DELETE_DIR              = JUMP_TABLE_ADDR + 105
-DELETE_FILE             = JUMP_TABLE_ADDR + 108
-SAVE_FAT                = JUMP_TABLE_ADDR + 111
-FIND_FILE               = JUMP_TABLE_ADDR + 114
+    ; .include "../../pager_os/build/pager_os/pager_os.inc"
+inst_ptr        =      $40     ; 2 bytes
+mode_ptr        =      $42
 
-
-BG_TRANSPARENT                    = $0
-BG_BLACK                          = $1
-BG_MEDIUM_GREEN                   = $2
-BG_LIGHT_GREEN                    = $3
-BG_DARK_BLUE                      = $4
-BG_LIGHT_BLUE                     = $5
-BG_DARK_RED                       = $6
-BG_CYAN                           = $7
-BG_MEDIUM_RED                     = $8
-BG_LIGHT_RED                      = $9
-BG_DARK_YELLOW                    = $A
-BG_LIGHT_YELLOW                   = $B
-BG_DARK_GREEN                     = $C
-BG_MAGENTA                        = $D
-BG_GRAY                           = $E
-BG_WHITE                          = $F
-
-FG_TRANSPARENT                    = $10 * BG_TRANSPARENT
-FG_BLACK                          = $10 * BG_BLACK
-FG_MEDIUM_GREEN                   = $10 * BG_MEDIUM_GREEN
-FG_LIGHT_GREEN                    = $10 * BG_LIGHT_GREEN
-FG_DARK_BLUE                      = $10 * BG_DARK_BLUE
-FG_LIGHT_BLUE                     = $10 * BG_LIGHT_BLUE
-FG_DARK_RED                       = $10 * BG_DARK_RED
-FG_CYAN                           = $10 * BG_CYAN
-FG_MEDIUM_RED                     = $10 * BG_MEDIUM_RED
-FG_LIGHT_RED                      = $10 * BG_LIGHT_RED
-FG_DARK_YELLOW                    = $10 * BG_DARK_YELLOW
-FG_LIGHT_YELLOW                   = $10 * BG_LIGHT_YELLOW
-FG_DARK_GREEN                     = $10 * BG_DARK_GREEN
-FG_MAGENTA                        = $10 * BG_MAGENTA
-FG_GRAY                           = $10 * BG_GRAY
-FG_WHITE                          = $10 * BG_WHITE
-
-; Video - TMS9918A
-VDP_VRAM                       = $4400
-VDP_REG                        = $4401
-vdp_write_addr_BIT             = %01000000  ; pattern of second vram address write: 01AAAAAA
-VDP_REGISTER_BITS              = %10000000  ; pattern of second register write: 10000RRR
-VDP_NAME_TABLE_BASE            = $0400
-VDP_PATTERN_TABLE_BASE         = $0800
-VDP_COLOR_TABLE_BASE           = $0200
-VDP_SPRITE_PATTERNS_TABLE_BASE = $0000
-VDP_SPRITE_ATTR_TABLE_BASE     = $0100
-
-; name table:           contains a value for each 8x8 region on the screen,
-;                       and points to one of the patterns
-; color table:          32 bytes, each defining the colors for 8 patterns in 
-;                       the pattern table
-; pattern table:        a list of patterns to be used as background, selected by
-;                       the name table
-; sprite pattern table: a list of patterns to be used as sprites
-; sprite attr table:    table containing position, color etc for each of the
-;                       32 sprites
-
-VDP_WRITE_PTR              = $1D
-VDP_WRITE_END              = $1F
-
-BALL_X                      = $58
-BALL_Y                      = $59
-
-                .macro vdp_write_addr
-                pha
-                lda #<(\1)
-                sta VDP_REG
-                lda #(vdp_write_addr_BIT | >\1) ; see second register write pattern
-                sta VDP_REG
-                pla
+                .macro inc16
+                inc \1
+                bne .\@
+                inc (\1)+1
+.\@:          
                 .endm
 
-                .macro vdp_write_pointers
-                lda     #<(\1)
-                sta     VDP_WRITE_PTR
-                lda     #>(\1)
-                sta     VDP_WRITE_PTR+1
-                lda     #<(\2)
-                sta     VDP_WRITE_END
-                lda     #>(\2)
-                sta     VDP_WRITE_END+1
-                .endm
+                .org $600
 
-                .org    $0600
 
-                stz     BALL_X
-                stz     BALL_Y
+                ldx     #0
 
-                sei
-                lda     #<irq
-                sta     IRQ_HANDLER+1
-                lda     #>irq
-                sta     IRQ_HANDLER+2
-
-                ; set VDP values specific to game
-                jsr     write_game_patterns
-                jsr     write_game_colors
-                jsr     write_game_sprites
-
-                jsr     draw_dotted_line
-                jsr     vdp_enable_display
-                cli
+.loop:          lda     mnemonics,x
+                sta     inst_ptr
+                inx
+                lda     mnemonics,x
+                sta     inst_ptr + 1
+                jsr     match_mnemonic
+                bcc     .match
+                inx
+                cpx     #mnemonics_size
+                bne     .loop
+.match:         jsr     find_mode
                 rts
 
-irq:            pha
-                phy
-                phx
-                lda     VDP_REG                   ; read VDP status register
-                and     #%10000000                ; highest bit is interrupt flag
-                beq     .done
-                jsr     draw_ball
-.done           plx
-                ply
-                pla
-                rti
 
+find_mode:      lda     #3              ; inst_ptr now points to the matching instruction
+                clc                     ; add three to skip the mnemonic string, and point
+                adc     inst_ptr        ; to the number of available modes for this instruction
+                sta     inst_ptr
+                bcc     .cont
+                inc     inst_ptr+1
+.cont:          lda     (inst_ptr)
+                tax                     ; the number of times to loop
 
-draw_ball:      inc     BALL_X
-                inc     BALL_Y
+                inc16   inst_ptr        ; go to the next byte which is the first of the
 
-                vdp_write_addr VDP_SPRITE_ATTR_TABLE_BASE ; same as ball
-                lda BALL_Y
-                sta VDP_VRAM
-                lda BALL_X
-                sta VDP_VRAM
-                lda #0                  ; first entry in the sprite pattern table
-                sta VDP_VRAM
-                lda #$0f                ; f: white
-                sta VDP_VRAM
-.done           rts
-
-                
-draw_dotted_line:
-                vdp_write_addr VDP_NAME_TABLE_BASE
-                ldy #$19     ; row number, starts at 23, because there are 24 rows
-.draw_row:      ldx #$20      ; column umber, starts at 31, because there are 32 columns
-.draw_row_loop: cpx #$10      ; 10 is in the middle, where the dotted line should go
-                beq .load_dots
-                lda #0
-                jmp .draw_pattern
-.load_dots:     lda #1 ; the dotted line pattern
-.draw_pattern:  sta VDP_VRAM
+.next_mode:     jsr     match_mode
+                inc16   inst_ptr
+                inc16   inst_ptr
                 dex
-                beq .row_done
-                jmp .draw_row_loop
-.row_done:      dey
-                bne .draw_row
+                bne     .next_mode
                 rts
 
-;===============================tmp==========================
+                ; inst_ptr points to the first byte of the address of the first
+                ; mode of the instruction that matched.
+match_mode:     phx
+                phy
+                ; build the pointer to the addressing mode string
+                lda     (inst_ptr)      ; loads the low byte of the address where the pattern is stored
+                sta     mode_ptr
+                inc16   inst_ptr        ; now point to the hight byte of the word
+                lda     (inst_ptr)
+                sta     mode_ptr+1
 
-
-write_game_patterns:
-                vdp_write_pointers vdp_patterns, vdp_end_patterns
-                jsr     vdp_pattern_write
+                ldy     #0
+.loop:          lda     (mode_ptr), y
+                beq     .done
+                jsr     putc
+                iny
+                bra     .loop
+.done:          ply
+                plx
                 rts
 
-write_game_sprites:
-                vdp_write_pointers vdp_sprite_patterns, vdp_end_sprite_patterns
-                jsr     vdp_sprite_pattern_write
+match_mnemonic: phx
+                ldx     #3              ; mnemonics are 3 characters long
+                ldy     #0
+.loop:          lda     (inst_ptr), y
+                jsr     putc
+                cmp     input, y
+                bne     .no_match
+                iny
+                dex
+                bne     .loop
+                clc
+                bra     .match
+.no_match:      sec
+.match          plx
                 rts
 
-write_game_colors:
-                vdp_write_pointers vdp_colors, vdp_end_colors
-                jsr     vdp_color_write
+
+putc:           sta     $f001
                 rts
 
+input:          .byte "LDA #20", 0
 
-vdp_sprite_pattern_write:
-                vdp_write_addr VDP_SPRITE_PATTERNS_TABLE_BASE
-                jsr     _write_vram
-                rts
+mode_izx:       .byte "($**,x)", 0, 2
+mode_zp:        .byte "$**", 0, 2
+mode_imm:       .byte "#$**", 0, 2
+mode_abs:       .byte "$****", 0, 3
+mode_izy:       .byte "($**),y", 0, 2
+mode_izp:       .byte "($**)", 0, 2
+mode_zpx:       .byte "$**,x", 0, 2
+mode_aby:       .byte "$****,y", 0, 3
+mode_abx:       .byte "$****,x", 0, 3
+mode_zpy:       .byte "$**,y", 0, 2
+mode_ind:       .byte "($****)", 0, 3
+mode_iax:       .byte "($****,x)", 0, 3
+mode_rel:       .byte "$**", 0, 2       ; make this absolute, but calculate rel
+mode_impl:      .byte "", 0, 1
 
-vdp_pattern_write:
-                vdp_write_addr VDP_PATTERN_TABLE_BASE
-                jsr     _write_vram
-                rts
+; this table is 64 words / 128 bytes long, so we can index into it
+; using one byte
+mnemonics:      .word inst_dex, inst_dey, inst_tax, inst_tsb, inst_bpl
+                .word inst_bcc, inst_cpx, inst_eor, inst_tsx, inst_dec
+                .word inst_sta, inst_lda, inst_beq, inst_rol, inst_sty
+                .word inst_jmp, inst_bmi, inst_rti, inst_tay, inst_txa
+                .word inst_rts, inst_sed, inst_lsr, inst_bne, inst_jsr
+                .word inst_ldy, inst_sec, inst_bit, inst_ldx, inst_txs
+                .word inst_sei, inst_asl, inst_bvs, inst_cpy, inst_cli
+                .word inst_cld, inst_trb, inst_clc, inst_bcs, inst_adc
+                .word inst_clv, inst_stx, inst_ror, inst_stz, inst_and
+                .word inst_php, inst_inx, inst_iny, inst_plp, inst_pha
+                .word inst_cmp, inst_tya, inst_ply, inst_plx, inst_bvc
+                .word inst_sbc, inst_phy, inst_phx, inst_brk, inst_pla
+                .word inst_inc, inst_nop, inst_bra, inst_ora
+end_mnemonics:
+mnemonics_size = end_mnemonics - mnemonics
 
-vdp_color_write:
-                vdp_write_addr VDP_COLOR_TABLE_BASE
-                jsr     _write_vram
-                rts
+instructions:
+inst_dex:       .byte "DEX", 1
+                    .word mode_impl
+                    .byte $ca
+inst_dey:       .byte "DEY", 1
+                    .word mode_impl
+                    .byte $88
+inst_tax:       .byte "TAX", 1
+                    .word mode_impl
+                    .byte $aa
+inst_tsb:       .byte "TSB", 2
+                    .word mode_abs
+                    .byte $0c
+                    .word mode_zp
+                    .byte $04
+inst_bpl:       .byte "BPL", 1
+                    .word mode_rel
+                    .byte $10
+inst_bcc:       .byte "BCC", 1
+                    .word mode_rel
+                    .byte $90
+inst_cpx:       .byte "CPX", 3
+                    .word mode_zp
+                    .byte $e4
+                    .word mode_abs
+                    .byte $ec
+                    .word mode_imm
+                    .byte $e0
+inst_eor:       .byte "EOR", 9
+                    .word mode_zpx
+                    .byte $55
+                    .word mode_imm
+                    .byte $49
+                    .word mode_izp
+                    .byte $52
+                    .word mode_abx
+                    .byte $5d
+                    .word mode_abs
+                    .byte $4d
+                    .word mode_aby
+                    .byte $59
+                    .word mode_izx
+                    .byte $41
+                    .word mode_izy
+                    .byte $51
+                    .word mode_zp
+                    .byte $45
+inst_tsx:       .byte "TSX", 1
+                    .word mode_impl
+                    .byte $ba
+inst_dec:       .byte "DEC", 5
+                    .word mode_abx
+                    .byte $de
+                    .word mode_zpx
+                    .byte $d6
+                    .word mode_abs
+                    .byte $ce
+                    .word mode_zp
+                    .byte $c6
+                    .word mode_impl
+                    .byte $3a
+inst_sta:       .byte "STA", 8
+                    .word mode_zpx
+                    .byte $95
+                    .word mode_izp
+                    .byte $92
+                    .word mode_abx
+                    .byte $9d
+                    .word mode_abs
+                    .byte $8d
+                    .word mode_aby
+                    .byte $99
+                    .word mode_izx
+                    .byte $81
+                    .word mode_izy
+                    .byte $91
+                    .word mode_zp
+                    .byte $85
+inst_lda:       .byte "LDA", 9
+                    .word mode_zpx
+                    .byte $b5
+                    .word mode_imm
+                    .byte $a9
+                    .word mode_izp
+                    .byte $b2
+                    .word mode_abx
+                    .byte $bd
+                    .word mode_abs
+                    .byte $ad
+                    .word mode_aby
+                    .byte $b9
+                    .word mode_izx
+                    .byte $a1
+                    .word mode_izy
+                    .byte $b1
+                    .word mode_zp
+                    .byte $a5
+inst_beq:       .byte "BEQ", 1
+                    .word mode_rel
+                    .byte $f0
+inst_rol:       .byte "ROL", 5
+                    .word mode_abx
+                    .byte $3e
+                    .word mode_zpx
+                    .byte $36
+                    .word mode_abs
+                    .byte $2e
+                    .word mode_zp
+                    .byte $26
+                    .word mode_impl
+                    .byte $2a
+inst_sty:       .byte "STY", 3
+                    .word mode_zpx
+                    .byte $94
+                    .word mode_abs
+                    .byte $8c
+                    .word mode_zp
+                    .byte $84
+inst_jmp:       .byte "JMP", 3
+                    .word mode_ind
+                    .byte $6c
+                    .word mode_abs
+                    .byte $4c
+                    .word mode_iax
+                    .byte $7c
+inst_bmi:       .byte "BMI", 1
+                    .word mode_rel
+                    .byte $30
+inst_rti:       .byte "RTI", 1
+                    .word mode_impl
+                    .byte $40
+inst_tay:       .byte "TAY", 1
+                    .word mode_impl
+                    .byte $a8
+inst_txa:       .byte "TXA", 1
+                    .word mode_impl
+                    .byte $8a
+inst_rts:       .byte "RTS", 1
+                    .word mode_impl
+                    .byte $60
+inst_sed:       .byte "SED", 1
+                    .word mode_impl
+                    .byte $f8
+inst_lsr:       .byte "LSR", 5
+                    .word mode_abx
+                    .byte $5e
+                    .word mode_zpx
+                    .byte $56
+                    .word mode_abs
+                    .byte $4e
+                    .word mode_zp
+                    .byte $46
+                    .word mode_impl
+                    .byte $4a
+inst_bne:       .byte "BNE", 1
+                    .word mode_rel
+                    .byte $d0
+inst_jsr:       .byte "JSR", 1
+                    .word mode_abs
+                    .byte $20
+inst_ldy:       .byte "LDY", 5
+                    .word mode_abx
+                    .byte $bc
+                    .word mode_zp
+                    .byte $a4
+                    .word mode_abs
+                    .byte $ac
+                    .word mode_imm
+                    .byte $a0
+                    .word mode_zpx
+                    .byte $b4
+inst_sec:       .byte "SEC", 1
+                    .word mode_impl
+                    .byte $38
+inst_bit:       .byte "BIT", 5
+                    .word mode_abx
+                    .byte $3c
+                    .word mode_zpx
+                    .byte $34
+                    .word mode_abs
+                    .byte $2c
+                    .word mode_zp
+                    .byte $24
+                    .word mode_imm
+                    .byte $89
+inst_ldx:       .byte "LDX", 5
+                    .word mode_zpy
+                    .byte $b6
+                    .word mode_zp
+                    .byte $a6
+                    .word mode_abs
+                    .byte $ae
+                    .word mode_imm
+                    .byte $a2
+                    .word mode_aby
+                    .byte $be
+inst_txs:       .byte "TXS", 1
+                    .word mode_impl
+                    .byte $9a
+inst_sei:       .byte "SEI", 1
+                    .word mode_impl
+                    .byte $78
+inst_asl:       .byte "ASL", 5
+                    .word mode_abx
+                    .byte $1e
+                    .word mode_zpx
+                    .byte $16
+                    .word mode_abs
+                    .byte $0e
+                    .word mode_zp
+                    .byte $06
+                    .word mode_impl
+                    .byte $0a
+inst_bvs:       .byte "BVS", 1
+                    .word mode_rel
+                    .byte $70
+inst_cpy:       .byte "CPY", 3
+                    .word mode_zp
+                    .byte $c4
+                    .word mode_abs
+                    .byte $cc
+                    .word mode_imm
+                    .byte $c0
+inst_cli:       .byte "CLI", 1
+                    .word mode_impl
+                    .byte $58
+inst_cld:       .byte "CLD", 1
+                    .word mode_impl
+                    .byte $d8
+inst_trb:       .byte "TRB", 2
+                    .word mode_abs
+                    .byte $1c
+                    .word mode_zp
+                    .byte $14
+inst_clc:       .byte "CLC", 1
+                    .word mode_impl
+                    .byte $18
+inst_bcs:       .byte "BCS", 1
+                    .word mode_rel
+                    .byte $b0
+inst_adc:       .byte "ADC", 9
+                    .word mode_zpx
+                    .byte $75
+                    .word mode_imm
+                    .byte $69
+                    .word mode_izp
+                    .byte $72
+                    .word mode_abx
+                    .byte $7d
+                    .word mode_abs
+                    .byte $6d
+                    .word mode_aby
+                    .byte $79
+                    .word mode_izx
+                    .byte $61
+                    .word mode_izy
+                    .byte $71
+                    .word mode_zp
+                    .byte $65
+inst_clv:       .byte "CLV", 1
+                    .word mode_impl
+                    .byte $b8
+inst_stx:       .byte "STX", 3
+                    .word mode_zpy
+                    .byte $96
+                    .word mode_abs
+                    .byte $8e
+                    .word mode_zp
+                    .byte $86
+inst_ror:       .byte "ROR", 5
+                    .word mode_abx
+                    .byte $7e
+                    .word mode_zpx
+                    .byte $76
+                    .word mode_abs
+                    .byte $6e
+                    .word mode_zp
+                    .byte $66
+                    .word mode_impl
+                    .byte $6a
+inst_stz:       .byte "STZ", 4
+                    .word mode_abx
+                    .byte $9e
+                    .word mode_zpx
+                    .byte $74
+                    .word mode_abs
+                    .byte $9c
+                    .word mode_zp
+                    .byte $64
+inst_and:       .byte "AND", 9
+                    .word mode_zpx
+                    .byte $35
+                    .word mode_imm
+                    .byte $29
+                    .word mode_izp
+                    .byte $32
+                    .word mode_abx
+                    .byte $3d
+                    .word mode_abs
+                    .byte $2d
+                    .word mode_aby
+                    .byte $39
+                    .word mode_izx
+                    .byte $21
+                    .word mode_izy
+                    .byte $31
+                    .word mode_zp
+                    .byte $25
+inst_php:       .byte "PHP", 1
+                    .word mode_impl
+                    .byte $08
+inst_inx:       .byte "INX", 1
+                    .word mode_impl
+                    .byte $e8
+inst_iny:       .byte "INY", 1
+                    .word mode_impl
+                    .byte $c8
+inst_plp:       .byte "PLP", 1
+                    .word mode_impl
+                    .byte $28
+inst_pha:       .byte "PHA", 1
+                    .word mode_impl
+                    .byte $48
+inst_cmp:       .byte "CMP", 9
+                    .word mode_zpx
+                    .byte $d5
+                    .word mode_imm
+                    .byte $c9
+                    .word mode_izp
+                    .byte $d2
+                    .word mode_abx
+                    .byte $dd
+                    .word mode_abs
+                    .byte $cd
+                    .word mode_aby
+                    .byte $d9
+                    .word mode_izx
+                    .byte $c1
+                    .word mode_izy
+                    .byte $d1
+                    .word mode_zp
+                    .byte $c5
+inst_tya:       .byte "TYA", 1
+                    .word mode_impl
+                    .byte $98
+inst_ply:       .byte "PLY", 1
+                    .word mode_impl
+                    .byte $7a
+inst_plx:       .byte "PLX", 1
+                    .word mode_impl
+                    .byte $fa
+inst_bvc:       .byte "BVC", 1
+                    .word mode_rel
+                    .byte $50
+inst_sbc:       .byte "SBC", 9
+                    .word mode_zpx
+                    .byte $f5
+                    .word mode_imm
+                    .byte $e9
+                    .word mode_izp
+                    .byte $f2
+                    .word mode_abx
+                    .byte $fd
+                    .word mode_abs
+                    .byte $ed
+                    .word mode_aby
+                    .byte $f9
+                    .word mode_izx
+                    .byte $e1
+                    .word mode_izy
+                    .byte $f1
+                    .word mode_zp
+                    .byte $e5
+inst_phy:       .byte "PHY", 1
+                    .word mode_impl
+                    .byte $5a
+inst_phx:       .byte "PHX", 1
+                    .word mode_impl
+                    .byte $da
+inst_brk:       .byte "BRK", 1
+                    .word mode_impl
+                    .byte $00
+inst_pla:       .byte "PLA", 1
+                    .word mode_impl
+                    .byte $68
+inst_inc:       .byte "INC", 5
+                    .word mode_abx
+                    .byte $fe
+                    .word mode_zpx
+                    .byte $f6
+                    .word mode_abs
+                    .byte $ee
+                    .word mode_zp
+                    .byte $e6
+                    .word mode_impl
+                    .byte $1a
+inst_nop:       .byte "NOP", 1
+                    .word mode_impl
+                    .byte $ea
+inst_bra:       .byte "BRA", 1
+                    .word mode_rel
+                    .byte $80
+inst_ora:       .byte "ORA", 9
+                    .word mode_zpx
+                    .byte $15
+                    .word mode_imm
+                    .byte $09
+                    .word mode_izp
+                    .byte $12
+                    .word mode_abx
+                    .byte $1d
+                    .word mode_abs
+                    .byte $0d
+                    .word mode_aby
+                    .byte $19
+                    .word mode_izx
+                    .byte $01
+                    .word mode_izy
+                    .byte $11
+                    .word mode_zp
+                    .byte $05
+end_instructions:
 
-; call into write_vram after setting VDP_WRITE_PTR
-; and VDP_WRITE_END to write a complete series of
-; bytes into VRAM
-_next_write:    inc     VDP_WRITE_PTR   ; inc low byte of write ptr
-                bne     _write_vram     ; if that didn't cause a 0, next write
-                inc     VDP_WRITE_PTR+1 ; if low byte inc caused 0, inc high byte
-_write_vram:    lda     (VDP_WRITE_PTR)
-                sta     VDP_VRAM
-                lda     VDP_WRITE_PTR
-                cmp     VDP_WRITE_END
-                bne     _next_write
-                lda     VDP_WRITE_PTR+1
-                cmp     VDP_WRITE_END+1
-                bne     _next_write
-                rts
-                
-;===============================tmp==========================
-vdp_enable_display:
-                lda #%11100000                         ; 16k Bl IE M1 M2 0 Siz MAG 
-                sta VDP_REG
-                lda #(VDP_REGISTER_BITS | 1)           ; register select (selecting register 1)
-                sta VDP_REG
-                rts
 
-vdp_colors:
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-                .byte FG_DARK_GREEN | BG_TRANSPARENT
-vdp_end_colors:
-
-vdp_sprite_patterns:
-                .byte $c0,$c0,$00,$00,$00,$00,$00,$00    ; ball 
-                .byte $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0    ; left paddle top
-                .byte $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0    ; left paddle bottom
-                .byte $03,$03,$03,$03,$03,$03,$03,$03    ; right paddle top
-                .byte $03,$03,$03,$03,$03,$03,$03,$03    ; right paddle bottom
-vdp_end_sprite_patterns:
-
-; pattern generator table
-vdp_patterns:   .byte $00,$00,$00,$00,$00,$00,$00,$00 ; empty, used to clear the screen
-                .byte $80,$80,$00,$00,$80,$80,$00,$00 ; dotted line
-                .byte $70,$88,$98,$A8,$C8,$88,$70,$00 ; 0
-                .byte $20,$60,$20,$20,$20,$20,$70,$00 ; 1
-                .byte $70,$88,$08,$30,$40,$80,$F8,$00 ; 2
-                .byte $F8,$08,$10,$30,$08,$88,$70,$00 ; 3
-                .byte $10,$30,$50,$90,$F8,$10,$10,$00 ; 4
-                .byte $F8,$80,$F0,$08,$08,$88,$70,$00 ; 5
-                .byte $38,$40,$80,$F0,$88,$88,$70,$00 ; 6
-                .byte $F8,$08,$10,$20,$40,$40,$40,$00 ; 7
-                .byte $70,$88,$88,$70,$88,$88,$70,$00 ; 8
-                .byte $70,$88,$88,$78,$08,$10,$E0,$00 ; 9
-vdp_end_patterns:
+    .org $fffc
+    .word $600
+    .word $600
