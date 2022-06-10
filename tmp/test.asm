@@ -3,7 +3,9 @@ MNEMONIC_SIZE   = 3
 
 inst_ptr        =      $40     ; 2 bytes
 mode_ptr        =      $42     ; 2 bytes
-found_opcode    =      $44     ; 2 bytes
+found_opcode    =      $44     ; 1 bytes
+arg_byte_size   =      $45     ; 1 byte
+arg_byte_offset =      $46     ; 1 byte
 
                 .macro inc16
                 inc \1
@@ -55,12 +57,22 @@ find_mode:      lda     #MNEMONIC_SIZE  ; inst_ptr now points to the matching in
 .found_mode:    inc16   inst_ptr
                 lda     (inst_ptr)
                 sta     found_opcode
+
+                ; now use mode_ptr to get the arg size and hex index to translate the hex
+                iny                     ; Pointer was left at the end of string marker for the pattern
+                                        ; Point it to the next byte which contains the number of chars
+                                        ; in the arg to skip to get to the start of the hex value
+                lda     (mode_ptr), y
+                sta     arg_byte_size
+                iny
+                lda     (mode_ptr), y
+                sta     arg_byte_offset
+
                 rts
 
 ; inst_ptr points to the first byte of the address of the first
 ; mode of the instruction that matched.
 match_mode:     phx
-                phy
                 ; build the pointer to the addressing mode string
                 lda     (inst_ptr)      ; loads the low byte of the address where the pattern is stored
                 sta     mode_ptr
@@ -83,8 +95,7 @@ match_mode:     phx
                 iny
                 bra     .loop
 .match:         clc
-.done:          ply
-                plx
+.done:          plx
                 rts
 
 match_mnemonic: phx
@@ -109,20 +120,35 @@ putc:           sta     $f001
 
 input:          .byte "LDA ($20),y", 0
 
-mode_izx:       .byte "($**,x)", 0, 2
-mode_zp:        .byte "$**", 0, 2
-mode_imm:       .byte "#$**", 0, 2
-mode_abs:       .byte "$****", 0, 3
-mode_izy:       .byte "($**),y", 0, 2
-mode_izp:       .byte "($**)", 0, 2
-mode_zpx:       .byte "$**,x", 0, 2
-mode_aby:       .byte "$****,y", 0, 3
-mode_abx:       .byte "$****,x", 0, 3
-mode_zpy:       .byte "$**,y", 0, 2
-mode_ind:       .byte "($****)", 0, 3
-mode_iax:       .byte "($****,x)", 0, 3
-mode_rel:       .byte "$**", 0, 2       ; make this absolute, but calculate rel
-mode_impl:      .byte "", 0, 1
+; mode_izx:       .byte "($**,x)", 0, 2   ; todo: add string index and arg size 
+; mode_zp:        .byte "$**", 0, 2
+; mode_imm:       .byte "#$**", 0, 2
+; mode_abs:       .byte "$****", 0, 3
+; mode_izy:       .byte "($**),y", 0, 2
+; mode_izp:       .byte "($**)", 0, 2
+; mode_zpx:       .byte "$**,x", 0, 2
+; mode_aby:       .byte "$****,y", 0, 3
+; mode_abx:       .byte "$****,x", 0, 3
+; mode_zpy:       .byte "$**,y", 0, 2
+; mode_ind:       .byte "($****)", 0, 3
+; mode_iax:       .byte "($****,x)", 0, 3
+; mode_rel:       .byte "$**", 0, 2       ; make this absolute, but calculate rel
+; mode_impl:      .byte "", 0, 1
+
+mode_iax:       .byte "($****,x)", 0, 2, 2
+mode_izp:       .byte "($**)", 0, 1, 2
+mode_zpx:       .byte "$**,x", 0, 1, 1
+mode_zpy:       .byte "$**,y", 0, 1, 1
+mode_izx:       .byte "($**,x)", 0, 1, 2
+mode_imm:       .byte "#$**", 0, 1, 2
+mode_izy:       .byte "($**),y", 0, 1, 2
+mode_ind:       .byte "($****)", 0, 2, 2
+mode_abs:       .byte "$****", 0, 2, 1
+mode_rel:       .byte "", 0, 0, 0
+mode_aby:       .byte "$****,y", 0, 2, 1
+mode_abx:       .byte "$****,x", 0, 2, 1
+mode_zp:       .byte "$**", 0, 1, 1
+mode_impl:       .byte "$**", 0, 1, 1
 
 ; this table is 64 words / 128 bytes long, so we can index into it
 ; using one byte
