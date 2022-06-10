@@ -1,7 +1,9 @@
     ; .include "../../pager_os/build/pager_os/pager_os.inc"
+MNEMONIC_SIZE   = 3
+
 inst_ptr        =      $40     ; 2 bytes
-mode_ptr        =      $42
-found_opcode    =      $44
+mode_ptr        =      $42     ; 2 bytes
+found_opcode    =      $44     ; 2 bytes
 
                 .macro inc16
                 inc \1
@@ -12,6 +14,9 @@ found_opcode    =      $44
 
                 .org $600
 
+; In the list of instructions, find the entry that matches the mnnemonic.
+; It loops over the list of mnemonic pointers, and calls `match_mnemonic`
+; for each of these.
 find_mnemonic:  ldx     #0
 .loop:          lda     mnemonics,x
                 sta     inst_ptr
@@ -27,8 +32,11 @@ find_mnemonic:  ldx     #0
 .match:         jsr     find_mode
 .no_match:      rts
 
-
-find_mode:      lda     #3              ; inst_ptr now points to the matching instruction
+; When the mnemonic is matched, the addressing mode needs to be matched as well
+; based on the pattern of the argument. This loops over the available mode pointers
+; for the matched mnemonic. Once the address mode is matched, the resuling opcode
+; for the mnemonic / addressing mode are stored in found_opcode
+find_mode:      lda     #MNEMONIC_SIZE  ; inst_ptr now points to the matching instruction
                 clc                     ; add three to skip the mnemonic string, and point
                 adc     inst_ptr        ; to the number of available modes for this instruction
                 sta     inst_ptr
@@ -49,8 +57,8 @@ find_mode:      lda     #3              ; inst_ptr now points to the matching in
                 sta     found_opcode
                 rts
 
-                ; inst_ptr points to the first byte of the address of the first
-                ; mode of the instruction that matched.
+; inst_ptr points to the first byte of the address of the first
+; mode of the instruction that matched.
 match_mode:     phx
                 phy
                 ; build the pointer to the addressing mode string
@@ -79,7 +87,7 @@ match_mode:     phx
                 rts
 
 match_mnemonic: phx
-                ldx     #3              ; mnemonics are 3 characters long
+                ldx     #MNEMONIC_SIZE  ; mnemonics are 3 characters long
                 ldy     #0
 .loop:          lda     (inst_ptr), y
                 jsr     putc
@@ -98,7 +106,7 @@ match_mnemonic: phx
 putc:           sta     $f001
                 rts
 
-input:          .byte "BTS $20,x", 0
+input:          .byte "LDA ($20),y", 0
 
 mode_izx:       .byte "($**,x)", 0, 2
 mode_zp:        .byte "$**", 0, 2
