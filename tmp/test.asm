@@ -88,10 +88,15 @@ match_mode:     phx
                 jsr     putc
                 lda     (mode_ptr), y
                 cmp     #"*"            ; match anything, this is where the hex values are
-                beq     .next
+                bne     .not_hex
+                lda     input + 4, y    ; load the input character into A
+                jsr     match_hex
+                bcc     .next
+                bra     .not_found
+.not_hex:       lda     (mode_ptr), y
                 cmp     input + 4, y    ; match to the next char from the input
                 beq     .next
-                sec
+.not_found:     sec
                 bra     .done
 .next:          lda     (mode_ptr), y
                 beq     .match          ; if we get to the end of string, it's a match
@@ -117,11 +122,26 @@ match_mnemonic: phx
 .match          plx
                 rts
 
-
 putc:           sta     $f001
                 rts
+; derermine if the byte in A is a hex character.
+; set carry if it isn't. Clear carry if it is.
+match_hex:      phy
+                ldy     #16
 
-input:          .byte "DEC $20,y", 0
+.next:          cmp     hex-1, y
+                beq     .match
+                dey
+                bne     .next
+                sec
+                bra     .done
+.match:         clc
+.done:          ply
+                rts
+
+hex:            .byte "0123456789ABCDEF"
+
+input:          .byte "LDA $20,x", 0
 
 mode_iax:       .byte "($****,x)", 0, 2, 2
 mode_izp:       .byte "($**)", 0, 1, 2
@@ -135,8 +155,8 @@ mode_abs:       .byte "$****", 0, 2, 1
 mode_rel:       .byte "", 0, 0, 0
 mode_aby:       .byte "$****,y", 0, 2, 1
 mode_abx:       .byte "$****,x", 0, 2, 1
-mode_zp:       .byte "$**", 0, 1, 1
-mode_impl:       .byte "$**", 0, 1, 1
+mode_zp:        .byte "$**", 0, 1, 1
+mode_impl:      .byte "$**", 0, 1, 1
 
 ; this table is 64 words / 128 bytes long, so we can index into it
 ; using one byte
@@ -581,5 +601,5 @@ end_instructions:
 
 
     .org $fffc
-    .word $600
-    .word $600
+    .word find_mnemonic
+    .word find_mnemonic
