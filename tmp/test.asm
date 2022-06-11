@@ -30,9 +30,10 @@ find_mnemonic:  ldx     #0
                 inx
                 cpx     #mnemonics_size
                 bne     .loop
-                bra     .no_match       ; end up here: no match
+                sec                     ; end up here: no match for mnemonic, flag as not found
+                bra     .done           ; and don't look for address mode
 .match:         jsr     find_mode
-.no_match:      rts
+.done:          rts
 
 ; When the mnemonic is matched, the addressing mode needs to be matched as well
 ; based on the pattern of the argument. This loops over the available mode pointers
@@ -54,6 +55,8 @@ find_mode:      lda     #MNEMONIC_SIZE  ; inst_ptr now points to the matching in
                 inc16   inst_ptr        ; point at first byte of the next available mode
                 dex
                 bne     .next_mode
+                sec                     ; not found
+                rts
 .found_mode:    inc16   inst_ptr
                 lda     (inst_ptr)
                 sta     found_opcode
@@ -67,7 +70,7 @@ find_mode:      lda     #MNEMONIC_SIZE  ; inst_ptr now points to the matching in
                 iny
                 lda     (mode_ptr), y
                 sta     arg_byte_offset
-
+                clc                     ; flag as found
                 rts
 
 ; inst_ptr points to the first byte of the address of the first
@@ -118,22 +121,7 @@ match_mnemonic: phx
 putc:           sta     $f001
                 rts
 
-input:          .byte "LDA ($20),y", 0
-
-; mode_izx:       .byte "($**,x)", 0, 2   ; todo: add string index and arg size 
-; mode_zp:        .byte "$**", 0, 2
-; mode_imm:       .byte "#$**", 0, 2
-; mode_abs:       .byte "$****", 0, 3
-; mode_izy:       .byte "($**),y", 0, 2
-; mode_izp:       .byte "($**)", 0, 2
-; mode_zpx:       .byte "$**,x", 0, 2
-; mode_aby:       .byte "$****,y", 0, 3
-; mode_abx:       .byte "$****,x", 0, 3
-; mode_zpy:       .byte "$**,y", 0, 2
-; mode_ind:       .byte "($****)", 0, 3
-; mode_iax:       .byte "($****,x)", 0, 3
-; mode_rel:       .byte "$**", 0, 2       ; make this absolute, but calculate rel
-; mode_impl:      .byte "", 0, 1
+input:          .byte "DEC $20,y", 0
 
 mode_iax:       .byte "($****,x)", 0, 2, 2
 mode_izp:       .byte "($**)", 0, 1, 2
