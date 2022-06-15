@@ -1,4 +1,5 @@
-    ; .include "../../pager_os/build/pager_os/pager_os.inc"
+    .include "../../pager_os/build/pager_os/pager_os.inc"
+
 MNEMONIC_SIZE   = 3
 
 inst_ptr        =      $40     ; 2 bytes
@@ -14,12 +15,18 @@ arg_byte_offset =      $46     ; 1 byte
 .\@:          
                 .endm
 
-                .org $600
+                .org $0600
+
+save_line:      jsr     JMP_GET_INPUT
+                jsr     find_instrctn
+                bcs     .error
+
+.error:         rts
 
 ; In the list of instructions, find the entry that matches the mnnemonic.
 ; It loops over the list of mnemonic pointers, and calls `match_mnemonic`
 ; for each of these.
-find_mnemonic:  ldx     #0
+find_instrctn:  ldx     #0
 .loop:          lda     mnemonics,x
                 sta     inst_ptr
                 inx
@@ -34,6 +41,22 @@ find_mnemonic:  ldx     #0
                 bra     .done           ; and don't look for address mode
 .match:         jsr     find_mode
 .done:          rts
+
+match_mnemonic: phx
+                ldx     #MNEMONIC_SIZE  ; mnemonics are 3 characters long
+                ldy     #0
+.loop:          lda     (inst_ptr), y
+                ; jsr     JMP_PUTC
+                cmp     __INPUTBFR_START__, y
+                bne     .no_match
+                iny
+                dex
+                bne     .loop
+                clc
+                bra     .match
+.no_match:      sec
+.match          plx
+                rts
 
 ; When the mnemonic is matched, the addressing mode needs to be matched as well
 ; based on the pattern of the argument. This loops over the available mode pointers
@@ -84,17 +107,15 @@ match_mode:     phx
                 sta     mode_ptr+1
 
                 ldy     #0
-.loop:          lda     (mode_ptr), y
-                jsr     putc
                 lda     (mode_ptr), y
                 cmp     #"*"            ; match anything, this is where the hex values are
                 bne     .not_hex
-                lda     input + 4, y    ; load the input character into A
+                lda     __INPUTBFR_START__ + 4, y    ; load the input character into A
                 jsr     match_hex
                 bcc     .next
                 bra     .not_found
 .not_hex:       lda     (mode_ptr), y
-                cmp     input + 4, y    ; match to the next char from the input
+                cmp     __INPUTBFR_START__ + 4, y    ; match to the next char from the input
                 beq     .next
 .not_found:     sec
                 bra     .done
@@ -106,21 +127,6 @@ match_mode:     phx
 .done:          plx
                 rts
 
-match_mnemonic: phx
-                ldx     #MNEMONIC_SIZE  ; mnemonics are 3 characters long
-                ldy     #0
-.loop:          lda     (inst_ptr), y
-                jsr     putc
-                cmp     input, y
-                bne     .no_match
-                iny
-                dex
-                bne     .loop
-                clc
-                bra     .match
-.no_match:      sec
-.match          plx
-                rts
 
 putc:           sta     $f001
                 rts
@@ -141,8 +147,6 @@ match_hex:      phy
 
 hex:            .byte "0123456789ABCDEF"
 
-input:          .byte "LDA $20,x", 0
-
 mode_iax:       .byte "($****,x)", 0, 2, 2
 mode_izp:       .byte "($**)", 0, 1, 2
 mode_zpx:       .byte "$**,x", 0, 1, 1
@@ -156,7 +160,7 @@ mode_rel:       .byte "", 0, 0, 0
 mode_aby:       .byte "$****,y", 0, 2, 1
 mode_abx:       .byte "$****,x", 0, 2, 1
 mode_zp:        .byte "$**", 0, 1, 1
-mode_impl:      .byte "$**", 0, 1, 1
+mode_impl:      .byte "", 0, 1, 1
 
 ; this table is 64 words / 128 bytes long, so we can index into it
 ; using one byte
@@ -598,8 +602,3 @@ inst_ora:       .byte "ORA", 9
                     .word mode_zp
                     .byte $05
 end_instructions:
-
-
-    .org $fffc
-    .word find_mnemonic
-    .word find_mnemonic
