@@ -55,14 +55,13 @@ save_line:      jsr     find_instrctn
                 lda     #" "
                 jsr     JMP_PUTC
                 
-                inc16   write_ptr       ; to next write address for the args, if any
-
                 lda     arg_byte_size
                 beq     .done
                 cmp     #2
                 beq     .two_byte_arg
 
-.one_byte_arg:  clc
+.one_byte_arg:  inc16   write_ptr
+                clc
                 lda     arg_byte_offset
                 adc     #(__INPUTBFR_START__+4)
                 jsr     hex_to_byte
@@ -72,7 +71,8 @@ save_line:      jsr     find_instrctn
                 jsr     JMP_PUTC
                 bra     .done
 
-.two_byte_arg:  clc
+.two_byte_arg:  inc16   write_ptr
+                clc
                 lda     arg_byte_offset
                 adc     #(__INPUTBFR_START__+6) ; read low byte first
                 jsr     hex_to_byte
