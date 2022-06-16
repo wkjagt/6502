@@ -48,7 +48,7 @@ read_line:      stz     write_ptr
 
 
 save_line:      jsr     find_instrctn
-                bcs     .done           ; todo: do something with the error
+                bcs     .error
                 lda     found_opcode
                 sta     (write_ptr)
                 jsr     JMP_PRINT_HEX
@@ -90,7 +90,7 @@ save_line:      jsr     find_instrctn
                 jsr     JMP_PRINT_HEX
 
 .done:          inc16   write_ptr
-                rts
+.error          rts
 
 ; In the list of instructions, find the entry that matches the mnnemonic.
 ; It loops over the list of mnemonic pointers, and calls `match_mnemonic`
