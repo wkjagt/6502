@@ -18,14 +18,43 @@ write_ptr       =      $47     ; 2 bytes
 
                 .org $0600
 
-save_line:      stz     write_ptr
+read_line:      stz     write_ptr
                 lda     #$10
                 sta     write_ptr+1
+
+.next_line:     lda     #$0A
+                jsr     JMP_PUTC
+                lda     #$0D
+                jsr     JMP_PUTC
+
+                lda     write_ptr+1
+                jsr     JMP_PRINT_HEX
+                lda     write_ptr
+                jsr     JMP_PRINT_HEX
+
+                jsr     JMP_PRINT_STRING
+                .byte   "            ",0
+                
                 jsr     JMP_GET_INPUT
-                jsr     find_instrctn
+
+                lda     #$0e
+                jsr     JMP_PUTC
+                lda     #5
+                jsr     JMP_PUTC
+
+                jsr     save_line
+
+                bra     .next_line
+
+
+save_line:      jsr     find_instrctn
                 bcs     .done           ; todo: do something with the error
                 lda     found_opcode
                 sta     (write_ptr)
+                jsr     JMP_PRINT_HEX
+                lda     #" "
+                jsr     JMP_PUTC
+                
                 inc16   write_ptr       ; to next write address for the args, if any
 
                 lda     arg_byte_size
@@ -38,6 +67,9 @@ save_line:      stz     write_ptr
                 adc     #(__INPUTBFR_START__+4)
                 jsr     hex_to_byte
                 sta     (write_ptr)
+                jsr     JMP_PRINT_HEX
+                lda     #" "
+                jsr     JMP_PUTC
                 bra     .done
 
 .two_byte_arg:  clc
@@ -45,14 +77,20 @@ save_line:      stz     write_ptr
                 adc     #(__INPUTBFR_START__+6) ; read low byte first
                 jsr     hex_to_byte
                 sta     (write_ptr)
-
+                jsr     JMP_PRINT_HEX
+                lda     #" "
+                jsr     JMP_PUTC
+                
                 inc16   write_ptr
+                clc
                 lda     arg_byte_offset
                 adc     #(__INPUTBFR_START__+4) ; read low byte first
                 jsr     hex_to_byte
                 sta     (write_ptr)
+                jsr     JMP_PRINT_HEX
 
-.done:          rts
+.done:          inc16   write_ptr
+                rts
 
 ; In the list of instructions, find the entry that matches the mnnemonic.
 ; It loops over the list of mnemonic pointers, and calls `match_mnemonic`
