@@ -23,17 +23,36 @@ save_line:      stz     write_ptr
                 sta     write_ptr+1
                 jsr     JMP_GET_INPUT
                 jsr     find_instrctn
-                bcs     .error
+                bcs     .done           ; todo: do something with the error
                 lda     found_opcode
                 sta     (write_ptr)
                 inc16   write_ptr       ; to next write address for the args, if any
 
-                clc
+                lda     arg_byte_size
+                beq     .done
+                cmp     #2
+                beq     .two_byte_arg
+
+.one_byte_arg:  clc
                 lda     arg_byte_offset
                 adc     #(__INPUTBFR_START__+4)
                 jsr     hex_to_byte
                 sta     (write_ptr)
-.error:         rts
+                bra     .done
+
+.two_byte_arg:  clc
+                lda     arg_byte_offset
+                adc     #(__INPUTBFR_START__+6) ; read low byte first
+                jsr     hex_to_byte
+                sta     (write_ptr)
+
+                inc16   write_ptr
+                lda     arg_byte_offset
+                adc     #(__INPUTBFR_START__+4) ; read low byte first
+                jsr     hex_to_byte
+                sta     (write_ptr)
+
+.done:          rts
 
 ; In the list of instructions, find the entry that matches the mnnemonic.
 ; It loops over the list of mnemonic pointers, and calls `match_mnemonic`
@@ -161,6 +180,7 @@ match_hex:      phy
 
 hex:            .byte "0123456789ABCDEF"
 
+                ; pattern string, null byte, arg size, arg offset in string
 mode_iax:       .byte "($****,x)", 0, 2, 2
 mode_izp:       .byte "($**)", 0, 1, 2
 mode_zpx:       .byte "$**,x", 0, 1, 1
@@ -174,7 +194,7 @@ mode_rel:       .byte "", 0, 0, 0
 mode_aby:       .byte "$****,y", 0, 2, 1
 mode_abx:       .byte "$****,x", 0, 2, 1
 mode_zp:        .byte "$**", 0, 1, 1
-mode_impl:      .byte "", 0, 1, 1
+mode_impl:      .byte "", 0, 0, 1
 
 ; this table is 64 words / 128 bytes long, so we can index into it
 ; using one byte
