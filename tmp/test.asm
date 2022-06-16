@@ -7,6 +7,7 @@ mode_ptr        =      $42     ; 2 bytes
 found_opcode    =      $44     ; 1 bytes
 arg_byte_size   =      $45     ; 1 byte
 arg_byte_offset =      $46     ; 1 byte
+write_ptr       =      $47     ; 2 bytes
 
                 .macro inc16
                 inc \1
@@ -17,10 +18,21 @@ arg_byte_offset =      $46     ; 1 byte
 
                 .org $0600
 
-save_line:      jsr     JMP_GET_INPUT
+save_line:      stz     write_ptr
+                lda     #$10
+                sta     write_ptr+1
+                jsr     JMP_GET_INPUT
                 jsr     find_instrctn
                 bcs     .error
+                lda     found_opcode
+                sta     (write_ptr)
+                inc16   write_ptr       ; to next write address for the args, if any
 
+                clc
+                lda     arg_byte_offset
+                adc     #(__INPUTBFR_START__+4)
+                jsr     hex_to_byte
+                sta     (write_ptr)
 .error:         rts
 
 ; In the list of instructions, find the entry that matches the mnnemonic.
@@ -107,6 +119,8 @@ match_mode:     phx
                 sta     mode_ptr+1
 
                 ldy     #0
+.loop:          ;lda     (mode_ptr), y
+                ;jsr     JMP_PUTC
                 lda     (mode_ptr), y
                 cmp     #"*"            ; match anything, this is where the hex values are
                 bne     .not_hex
