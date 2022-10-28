@@ -65,15 +65,15 @@ move_piece:     jsr     clear_piece
 ; piece. It calls draw_block with the grid coordinates
 ; for the actual drawing of the individual block.
 ;===========================================================================
-draw_piece      lda     #<draw_block
-                sta     block_rtn
-                lda     #>draw_block
-                sta     block_rtn + 1
+draw_piece      lda     #<JMP_DRAW_PIXEL
+                sta     pixel_rtn
+                lda     #>JMP_DRAW_PIXEL
+                sta     pixel_rtn+1
                 jmp     update_piece
-clear_piece:    lda     #<clear_block
-                sta     block_rtn
-                lda     #>clear_block
-                sta     block_rtn + 1
+clear_piece:    lda     #<JMP_RMV_PIXEL
+                sta     pixel_rtn
+                lda     #>JMP_RMV_PIXEL
+                sta     pixel_rtn+1
 update_piece:   lda     piece_y         ; start drawing from the top
                 sta     block_y         ; coordinate of the piece
                 lda     piece           ; first byte of piece to draw
@@ -92,7 +92,7 @@ update_piece:   lda     piece_y         ; start drawing from the top
                 sty     block_x
 .bit_loop:      asl                     ; next bit into carry
                 bcc     .empty_block
-                jsr     block_jump
+                jsr     update_block
 .empty_block:   inc     block_x         ; move one block to the right
                 dex
                 bne     .bit_loop
@@ -101,26 +101,16 @@ update_piece:   lda     piece_y         ; start drawing from the top
 block_jump:     jmp     (block_rtn)
 
 ;===========================================================================
-; Draw a block at the position stored in block_x and block_y.
+; Update a block at the position stored in block_x and block_y.
+; This either draws or clears a block, depending on the method
+; stored at pixel_rtn.
 ; These are positions within the grid, not pixels, so this routine
 ; needs to calculate the pixel positions from the grid coordinates.
 ;===========================================================================
-draw_block:     pha
+update_block:   pha
                 phx
                 phy
-                lda     #<JMP_DRAW_PIXEL
-                sta     pixel_rtn
-                lda     #>JMP_DRAW_PIXEL
-                sta     pixel_rtn+1
-                jmp     _update_block
-clear_block:    pha
-                phx
-                phy
-                lda     #<JMP_RMV_PIXEL
-                sta     pixel_rtn
-                lda     #>JMP_RMV_PIXEL
-                sta     pixel_rtn+1
-_update_block:  lda     block_x
+                lda     block_x
                 asl
                 asl
                 tax
