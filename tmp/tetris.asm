@@ -6,7 +6,8 @@ ACR             = $600B
 IFR             = $600D
 IER             = $600E
 
-
+rotation        =       $3d
+piece           =       $3e
 piece_x         =       $40
 piece_y         =       $41
 block_x         =       $42
@@ -38,6 +39,11 @@ init_timer:     lda     #%01000000      ; T1 free run mode
                 stz     toggle_time
                 cli
 
+                lda     #<piece_l
+                sta     piece
+                lda     #>piece_l
+                sta     piece + 1
+
                 lda     #0
                 sta     piece_x
                 lda     #0
@@ -46,18 +52,26 @@ init_timer:     lda     #%01000000      ; T1 free run mode
 loop:           sec
                 lda     ticks
                 sbc     toggle_time
-                cmp     #25             ; 250ms
+                cmp     #50             ; 250ms
                 bcc     loop
-                jsr     move_piece
+                jsr     next
                 lda     ticks
                 sta     toggle_time
                 jmp     loop
 
-move_piece:     jsr     clear_piece
-                inc     piece_y
+next:           jsr     clear_piece
+                jsr     rotate
                 jsr     draw_piece
                 rts
                 
+
+rotate:         clc
+                lda     rotation
+                adc     #2
+                and     #%00000111      ; rollover at 8
+                sta     rotation
+                rts
+
 ;===========================================================================
 ; Draw piece at position stored at block_x and block_y.
 ; This routine reads the piece bytes and calcuates the
@@ -76,16 +90,19 @@ clear_piece:    lda     #<JMP_RMV_PIXEL
                 sta     pixel_rtn+1
 update_piece:   lda     piece_y         ; start drawing from the top
                 sta     block_y         ; coordinate of the piece
-                lda     piece           ; first byte of piece to draw
+                ldy     rotation
+                lda     (piece),y       ; first byte of piece to draw
                 jsr     .draw_byte
                 inc     block_y         ; move one down for each nibble
-                lda     piece+1         ; second byte of piece to draw
+                iny
+                lda     (piece), y      ; second byte of piece to draw
                 jsr     .draw_byte      ; todo: remove jsr / rts?
                 rts
-.draw_byte:     beq     .done           ; empty byte, save some time
+.draw_byte:     phy
                 jsr     .draw_nibble    ; split into two nibbles, and
                 inc     block_y         ; move one down for each nibble
                 jsr     .draw_nibble    ; increment y pos in between
+                ply
                 rts
 .draw_nibble:   ldx     #4
                 ldy     piece_x         ; return to left coordinate of piece
@@ -159,6 +176,36 @@ irq:            bit     T1CL            ; clear T1 interrupt
                 inc     ticks + 3
 .done:          rti
 
+
+
+pieces:         .word   piece_l
+
+piece_l:        .byte   %00101110, %00000000
+                .byte   %10001000, %11000000
+                .byte   %11101000, %00000000
+                .byte   %11000100, %01000000
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ; borders:        ldy     #0
 ;                 jsr     hline
 ;                 ldy     #99
@@ -187,6 +234,3 @@ irq:            bit     T1CL            ; clear T1 interrupt
 
 ; .done:          rts
 
-
-piece:          .byte   %00101110, %00000000    ;   #
-                                                ; ###
