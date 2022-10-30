@@ -40,35 +40,66 @@ init_timer:     lda     #%01000000      ; T1 free run mode
                 stz     toggle_time
                 cli
 
-init_game:      jsr     select_piece
-                lda     #20
+init_game:      jsr     JMP_CURSOR_OFF
+                lda     #12             ; clear screen
+                jsr     JMP_PUTC
+                jsr     draw_borders
+                jsr     select_piece
+                lda     #0
                 sta     piece_x
                 lda     #0
                 sta     piece_y
-                lda     #50
+                lda     #255
                 sta     game_delay
+                jsr     draw_piece
 
-loop:           jsr     move_down
-                lda     $6000           ; has key? todo: make nonblocking OS call for this
+;============================================================
+; the main loop of the game
+;============================================================
+loop:           jsr     handle_input
+                ; jsr     move_down
+                jmp     loop
+
+;============================================================
+; handle input from keyboard:
+;    space:         rotate piece
+;    left arrow:    move piece left
+;    right arrow:   move piece right
+;============================================================
+handle_input:   lda     $6000           ; has key? todo: make nonblocking OS call for this
                 bpl     .done
                 jsr     JMP_GETC
-
                 cmp     #" "            ; space to rotate
                 bne     .left_q
                 jsr     rotate
 .left_q:        cmp     #29
                 bne     .right_q
-                jsr     clear_piece
-                dec     piece_x
-                jsr     draw_piece
+                jsr     move_left
 .right_q:       cmp     #28
                 bne     .done
-                jsr     clear_piece
+                jsr     move_right
+.done           rts
+
+;============================================================
+; Move the piece to the left
+;============================================================
+move_left:      jsr     clear_piece
+                dec     piece_x
+                jsr     draw_piece
+                rts
+
+;============================================================
+; Move the piece to the left
+;============================================================
+move_right:     jsr     clear_piece
                 inc     piece_x
                 jsr     draw_piece
-.done:          jmp     loop
+                rts
 
-
+;============================================================
+; move the piece down using the ticks timer and
+; a speed (delay) variable
+;============================================================
 move_down:      lda     ticks
                 sbc     toggle_time
                 cmp     game_delay
@@ -154,6 +185,7 @@ update_block:   pha
                 lda     block_x
                 asl
                 asl
+                adc     #60             ; offset 60 because that's where the grid is
                 tax
                 lda     block_y
                 asl
@@ -202,6 +234,28 @@ irq:            bit     T1CL            ; clear T1 interrupt
 
 
 
+draw_borders:   ldx     #58
+                jsr     vline
+                ldx     #100
+                jsr     vline
+                rts
+
+hline:          ldx     #0
+.loop:          jsr     JMP_DRAW_PIXEL
+                inx
+                cpx     #160
+                bne     .loop
+
+.done:          rts
+
+vline:          ldy     #0
+.loop:          jsr     JMP_DRAW_PIXEL
+                iny
+                cpy     #100
+                bne     .loop
+
+.done:          rts
+
 pieces:         .word   piece_l
 
 piece_l:        .byte   %00101110, %00000000
@@ -246,31 +300,5 @@ piece_z:        .byte   %11000110, %00000000
 
 
 
-; borders:        ldy     #0
-;                 jsr     hline
-;                 ldy     #99
-;                 jsr     hline
-;                 ldx     #0
-;                 jsr     vline
-;                 ldx     #159
-;                 jsr     vline
-;                 rts
 
-
-
-; hline:          ldx     #0
-; .loop:          jsr     JMP_DRAW_PIXEL
-;                 inx
-;                 cpx     #160
-;                 bne     .loop
-
-; .done:          rts
-
-; vline:          ldy     #0
-; .loop:          jsr     JMP_DRAW_PIXEL
-;                 iny
-;                 cpy     #100
-;                 bne     .loop
-
-; .done:          rts
 
