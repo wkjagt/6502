@@ -16,6 +16,7 @@ pixel_rtn       =       $44             ; 2 bytes
 block_rtn       =       $46
 ticks           =       $50             ; 4 bytes
 toggle_time     =       $54
+game_delay      =       $55
 
                 .org $0600
 
@@ -39,27 +40,46 @@ init_timer:     lda     #%01000000      ; T1 free run mode
                 stz     toggle_time
                 cli
 
-                jsr     select_piece
-                lda     #0
+init_game:      jsr     select_piece
+                lda     #20
                 sta     piece_x
                 lda     #0
                 sta     piece_y
+                lda     #50
+                sta     game_delay
 
-loop:           sec
-                lda     ticks
+loop:           jsr     move_down
+                lda     $6000           ; has key? todo: make nonblocking OS call for this
+                bpl     .done
+                jsr     JMP_GETC
+
+                cmp     #" "            ; space to rotate
+                bne     .left_q
+                jsr     rotate
+.left_q:        cmp     #29
+                bne     .right_q
+                jsr     clear_piece
+                dec     piece_x
+                jsr     draw_piece
+.right_q:       cmp     #28
+                bne     .done
+                jsr     clear_piece
+                inc     piece_x
+                jsr     draw_piece
+.done:          jmp     loop
+
+
+move_down:      lda     ticks
                 sbc     toggle_time
-                cmp     #20             ; 250ms
-                bcc     loop
-                jsr     next
+                cmp     game_delay
+                bcc     .done
                 lda     ticks
                 sta     toggle_time
-                jmp     loop
 
-next:           jsr     clear_piece
-                jsr     rotate
+                jsr     clear_piece
                 inc     piece_y
                 jsr     draw_piece
-                rts
+.done:          rts
 
 select_piece:   lda     #<piece_z
                 sta     piece
@@ -68,10 +88,12 @@ select_piece:   lda     #<piece_z
                 rts
 
 rotate:         clc
+                jsr     clear_piece
                 lda     rotation
                 adc     #2
                 and     #%00000111      ; rollover at 8
                 sta     rotation
+                jsr     draw_piece
                 rts
 
 ;===========================================================================
