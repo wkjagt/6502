@@ -39,11 +39,7 @@ init_timer:     lda     #%01000000      ; T1 free run mode
                 stz     toggle_time
                 cli
 
-                lda     #<piece_l
-                sta     piece
-                lda     #>piece_l
-                sta     piece + 1
-
+                jsr     select_piece
                 lda     #0
                 sta     piece_x
                 lda     #0
@@ -52,7 +48,7 @@ init_timer:     lda     #%01000000      ; T1 free run mode
 loop:           sec
                 lda     ticks
                 sbc     toggle_time
-                cmp     #50             ; 250ms
+                cmp     #20             ; 250ms
                 bcc     loop
                 jsr     next
                 lda     ticks
@@ -61,9 +57,15 @@ loop:           sec
 
 next:           jsr     clear_piece
                 jsr     rotate
+                inc     piece_y
                 jsr     draw_piece
                 rts
-                
+
+select_piece:   lda     #<piece_z
+                sta     piece
+                lda     #>piece_z
+                sta     piece + 1
+                rts
 
 rotate:         clc
                 lda     rotation
@@ -184,14 +186,30 @@ piece_l:        .byte   %00101110, %00000000
                 .byte   %10001000, %11000000
                 .byte   %11101000, %00000000
                 .byte   %11000100, %01000000
-
-
-
-
-
-
-
-
+piece_i:        .byte   %10001000, %10001000
+                .byte   %11110000, %00000000
+                .byte   %10001000, %10001000
+                .byte   %11110000, %00000000
+piece_j:        .byte   %10001110, %00000000
+                .byte   %11001000, %10000000
+                .byte   %11100010, %00000000
+                .byte   %01000100, %11000000
+piece_o:        .byte   %11001100, %00000000
+                .byte   %11001100, %00000000
+                .byte   %11001100, %00000000
+                .byte   %11001100, %00000000
+piece_s:        .byte   %01101100, %00000000
+                .byte   %10001100, %01000000
+                .byte   %01101100, %00000000
+                .byte   %10001100, %01000000
+piece_t:        .byte   %01001110, %00000000
+                .byte   %10001100, %10000000
+                .byte   %11100100, %00000000
+                .byte   %01001100, %01000000
+piece_z:        .byte   %11000110, %00000000
+                .byte   %01001100, %10000000
+                .byte   %11000110, %00000000
+                .byte   %01001100, %10000000
 
 
 
