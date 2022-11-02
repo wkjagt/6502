@@ -18,7 +18,7 @@ ticks           =       $50             ; 4 bytes
 toggle_time     =       $54
 game_delay      =       $55
 
-                .org $0600
+                .org    $0600
 
                 lda     #<irq
                 sta     JMP_IRQ_HANDLER + 1
@@ -83,19 +83,73 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 ;============================================================
 ; Move the piece to the left
 ;============================================================
-move_left:      jsr     clear_piece
+move_left:      jsr     check_left
+                bcs     .done
+                jsr     clear_piece
                 dec     piece_x
                 jsr     draw_piece
-                rts
+.done:          rts
 
+check_left:     lda     piece_x
+                bne     .cmpmin1
+                lda     #%10001000      ; check 1st column for blocks
+                bra     .verify
+.cmpmin1:       cmp     #-1
+                bne     .cmpmin2
+                lda     #%01000100      ; check 2nd column for blocks
+                bra     .verify
+.cmpmin2:       cmp     #-2
+                bne     .no_verify
+                lda     #%00100010      ; check 3rd column for blocks
+.verify:        tsx
+                pha                     ; save pattern on the stack so we can index using x
+                ldy     #1
+                lda     (piece)         ; first byte
+                ora     (piece), y      ; second byte
+                and     $100, x         ; points to pattern on stack
+                beq     .no_match
+.matched:       pla
+                sec
+                rts
+.no_match:      pla
+.no_verify:     clc
+                rts
 ;============================================================
 ; Move the piece to the left
 ;============================================================
-move_right:     jsr     clear_piece
+move_right:     jsr     check_right
+                bcs     .done
+                jsr     clear_piece
                 inc     piece_x
                 jsr     draw_piece
-                rts
+.done:          rts
 
+check_right:    lda     piece_x
+                cmp     #6
+                bne     .cmpmin1
+                lda     #%00010001      ; check 1st column for blocks
+                bra     .verify
+.cmpmin1:       cmp     #7
+                bne     .cmpmin2
+                lda     #%00100010      ; check 2nd column for blocks
+                bra     .verify
+.cmpmin2:       cmp     #8
+                bne     .no_verify
+                lda     #%01000100      ; check 3rd column for blocks
+.verify:        tsx
+                pha                     ; save pattern on the stack so we can index using x
+                ldy     rotation
+                lda     (piece),y       ; first byte
+                iny
+                ora     (piece), y      ; second byte
+                and     $100, x         ; points to pattern on stack
+                beq     .no_match
+.matched:       pla
+                sec
+                rts
+.no_match:      pla
+.no_verify:     clc
+                rts
 ;============================================================
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
@@ -112,9 +166,9 @@ move_down:      lda     ticks
                 jsr     draw_piece
 .done:          rts
 
-select_piece:   lda     #<piece_z
+select_piece:   lda     #<piece_j
                 sta     piece
-                lda     #>piece_z
+                lda     #>piece_j
                 sta     piece + 1
                 rts
 
@@ -150,7 +204,7 @@ update_piece:   lda     piece_y         ; start drawing from the top
                 jsr     .draw_byte
                 inc     block_y         ; move one down for each nibble
                 iny
-                lda     (piece), y      ; second byte of piece to draw
+                lda     (piece),y       ; second byte of piece to draw
                 jsr     .draw_byte      ; todo: remove jsr / rts?
                 rts
 .draw_byte:     phy
