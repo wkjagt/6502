@@ -83,14 +83,30 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 ;============================================================
 ; Move the piece to the left
 ;============================================================
-move_left:      jsr     check_left
-                bcs     .done
+move_left:      jsr     tch_left_wall
+                bcs     .no_move
                 jsr     clear_piece
                 dec     piece_x
                 jsr     draw_piece
-.done:          rts
+.no_move:       rts
 
-check_left:     lda     piece_x
+;============================================================
+; Move the piece to the left
+;============================================================
+move_right:     jsr     tch_right_wall
+                bcs     .no_move
+                jsr     clear_piece
+                inc     piece_x
+                jsr     draw_piece
+.no_move:       rts
+
+;============================================================
+; Routine to check if the piece currently touches the left
+; wall. This loads a bit pattern to check, where a 1 means
+; that a column needs to be checked for 1s in the piece,
+; and calls _verify_wall
+;============================================================
+tch_left_wall:  lda     piece_x
                 bne     .cmpmin1
                 lda     #%10001000      ; check 1st column for blocks
                 bra     .verify
@@ -101,30 +117,16 @@ check_left:     lda     piece_x
 .cmpmin2:       cmp     #-2
                 bne     .no_verify
                 lda     #%00100010      ; check 3rd column for blocks
-.verify:        tsx
-                pha                     ; save pattern on the stack so we can index using x
-                ldy     #1
-                lda     (piece)         ; first byte
-                ora     (piece), y      ; second byte
-                and     $100, x         ; points to pattern on stack
-                beq     .no_match
-.matched:       pla
-                sec
-                rts
-.no_match:      pla
-.no_verify:     clc
-                rts
-;============================================================
-; Move the piece to the left
-;============================================================
-move_right:     jsr     check_right
-                bcs     .done
-                jsr     clear_piece
-                inc     piece_x
-                jsr     draw_piece
-.done:          rts
+.verify:        jsr     _verify_wall
+.no_verify:     rts
 
-check_right:    lda     piece_x
+;============================================================
+; Routine to check if the piece currently touches the right
+; wall. This loads a bit pattern to check, where a 1 means
+; that a column needs to be checked for 1s in the piece,
+; and calls _verify_wall
+;============================================================
+tch_right_wall: lda     piece_x
                 cmp     #6
                 bne     .cmpmin1
                 lda     #%00010001      ; check 1st column for blocks
@@ -136,7 +138,17 @@ check_right:    lda     piece_x
 .cmpmin2:       cmp     #8
                 bne     .no_verify
                 lda     #%01000100      ; check 3rd column for blocks
-.verify:        tsx
+.verify:        jsr     _verify_wall
+.no_verify:     rts
+
+;============================================================
+; Routine used by tch_left_wall and check_right
+; Sets carry flag if the piece is up against the wall
+; A needs to hold a bit pattern of which bits to test
+; in the pieces, based on the current coordinate of the
+; block
+;============================================================
+_verify_wall:   tsx
                 pha                     ; save pattern on the stack so we can index using x
                 ldy     rotation
                 lda     (piece),y       ; first byte
