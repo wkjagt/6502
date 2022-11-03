@@ -131,68 +131,81 @@ select_piece:   lda     #<piece_j
                 sta     piece + 1
                 rts
 
-rotate:         clc
+rotate:         jsr     do_rotate
+                jsr     verify_piece
+                bcs     .no_rotate
+                jsr     undo_rotate
                 jsr     clear_piece
+                jsr     do_rotate
+                jsr     draw_piece
+                bra     .done
+.no_rotate:     jsr     undo_rotate
+.done:          rts
+
+do_rotate:      clc
                 lda     rotation
                 adc     #2
                 and     #%00000111      ; rollover at 8
                 sta     rotation
-                jsr     draw_piece
+                rts
+
+undo_rotate:    jsr     do_rotate
+                jsr     do_rotate
+                jsr     do_rotate
                 rts
 
 ;===========================================================================
-; Draw piece at position stored at block_x and block_y.
+; Handle piece at position stored at block_x and block_y.
 ; This routine reads the piece bytes and calcuates the
 ; coordinates of the separate blocks that make up the
-; piece. It calls draw_block with the grid coordinates
-; for the actual drawing of the individual block.
+; piece.
 ;===========================================================================
 draw_piece      lda     #<draw_block
                 sta     block_rtn
                 lda     #>draw_block
                 sta     block_rtn+1
-                jmp     update_piece
+                jmp     handle_piece
 clear_piece:    lda     #<clear_block
                 sta     block_rtn
                 lda     #>clear_block
                 sta     block_rtn+1
-                jmp     update_piece
+                jmp     handle_piece
 verify_piece:   lda     #<verify_block
                 sta     block_rtn
                 lda     #>verify_block
                 sta     block_rtn+1
-update_piece:   lda     piece_y         ; start drawing from the top
+handle_piece:   lda     piece_y         ; start drawing from the top
                 sta     block_y         ; coordinate of the piece
                 ldy     rotation
                 lda     (piece),y       ; first byte of piece to draw
-                jsr     draw_byte
+                jsr     handle_byte
                 bcs     .done
                 inc     block_y         ; move one down for each nibble
                 iny
                 lda     (piece),y       ; second byte of piece to draw
-                jsr     draw_byte      ; todo: remove jsr / rts?
+                jsr     handle_byte      ; todo: remove jsr / rts?
 .done:          rts
 
 ;===========================================================================
-; Draw one byte of a piece, which is drawn as one row
+; Handle one byte (two rows) of a piece
 ;===========================================================================
-draw_byte:      phy
-                jsr     draw_nibble    ; split into two nibbles, and
+handle_byte:    phy
+                jsr     handle_nibble    ; split into two nibbles, and
                 bcs     .done
                 inc     block_y         ; move one down for each nibble
-                jsr     draw_nibble    ; increment y pos in between
+                jsr     handle_nibble    ; increment y pos in between
 .done:          ply
                 rts
 
 ;===========================================================================
-; Draw one nibble of a piece, which is drawn as one row
+; Handle one nibble (row) of a piece
 ;===========================================================================
-draw_nibble:    ldx     #4
+handle_nibble:  ldx     #4
                 ldy     piece_x         ; return to left coordinate of piece
                 sty     block_x
 .bit_loop:      asl                     ; next bit into carry
                 bcc     .empty_block
-                jsr     block_jump
+                jsr     handle_block
                 bcs     .done           ; carry set means error: return and keep the carry flag
 .empty_block:   inc     block_x         ; move one block to the right
                 dex
@@ -201,9 +214,7 @@ draw_nibble:    ldx     #4
 
 
 
-block_jump:     jmp     (block_rtn)
-
-
+handle_block:   jmp     (block_rtn)
 
 
 draw_block:     pha
@@ -228,9 +239,9 @@ clear_block:    pha
 
 verify_block:   pha
                 lda     block_x
-                cmp     #-1
+                cmp     #-1             ; to left of left wall
                 beq     .fail
-                cmp     #10
+                cmp     #10             ; to right of right wall
                 beq     .fail
                 bra     .success
 .fail:          sec
