@@ -75,6 +75,7 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 .left_q:        cmp     #29
                 bne     .right_q
                 jsr     move_left
+                bra     .done
 .right_q:       cmp     #28
                 bne     .done
                 jsr     move_right
@@ -83,85 +84,31 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 ;============================================================
 ; Move the piece to the left
 ;============================================================
-move_left:      jsr     tch_left_wall
-                bcs     .no_move
+move_left:      dec     piece_x
+                jsr     verify_piece
+                bcc     .do_move
+                inc     piece_x
+                rts
+.do_move:       inc     piece_x
                 jsr     clear_piece
                 dec     piece_x
                 jsr     draw_piece
-.no_move:       rts
+                rts
 
 ;============================================================
-; Move the piece to the left
+; Move the piece to the right
 ;============================================================
-move_right:     jsr     tch_right_wall
-                bcs     .no_move
+move_right:     inc     piece_x
+                jsr     verify_piece
+                bcc     .do_move
+                dec     piece_x
+                rts
+.do_move:       dec     piece_x
                 jsr     clear_piece
                 inc     piece_x
                 jsr     draw_piece
-.no_move:       rts
-
-;============================================================
-; Routine to check if the piece currently touches the left
-; wall. This loads a bit pattern to check, where a 1 means
-; that a column needs to be checked for 1s in the piece,
-; and calls _verify_wall
-;============================================================
-tch_left_wall:  lda     piece_x
-                bne     .cmpmin1
-                lda     #%10001000      ; check 1st column for blocks
-                bra     .verify
-.cmpmin1:       cmp     #-1
-                bne     .cmpmin2
-                lda     #%01000100      ; check 2nd column for blocks
-                bra     .verify
-.cmpmin2:       cmp     #-2
-                bne     .no_verify
-                lda     #%00100010      ; check 3rd column for blocks
-.verify:        jsr     _verify_wall
-.no_verify:     rts
-
-;============================================================
-; Routine to check if the piece currently touches the right
-; wall. This loads a bit pattern to check, where a 1 means
-; that a column needs to be checked for 1s in the piece,
-; and calls _verify_wall
-;============================================================
-tch_right_wall: lda     piece_x
-                cmp     #6
-                bne     .cmpmin1
-                lda     #%00010001      ; check 1st column for blocks
-                bra     .verify
-.cmpmin1:       cmp     #7
-                bne     .cmpmin2
-                lda     #%00100010      ; check 2nd column for blocks
-                bra     .verify
-.cmpmin2:       cmp     #8
-                bne     .no_verify
-                lda     #%01000100      ; check 3rd column for blocks
-.verify:        jsr     _verify_wall
-.no_verify:     rts
-
-;============================================================
-; Routine used by tch_left_wall and check_right
-; Sets carry flag if the piece is up against the wall
-; A needs to hold a bit pattern of which bits to test
-; in the pieces, based on the current coordinate of the
-; block
-;============================================================
-_verify_wall:   tsx
-                pha                     ; save pattern on the stack so we can index using x
-                ldy     rotation
-                lda     (piece),y       ; first byte
-                iny
-                ora     (piece), y      ; second byte
-                and     $100, x         ; points to pattern on stack
-                beq     .no_match
-.matched:       pla
-                sec
                 rts
-.no_match:      pla
-.no_verify:     clc
-                rts
+
 ;============================================================
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
@@ -200,43 +147,95 @@ rotate:         clc
 ; piece. It calls draw_block with the grid coordinates
 ; for the actual drawing of the individual block.
 ;===========================================================================
-draw_piece      lda     #<JMP_DRAW_PIXEL
-                sta     pixel_rtn
-                lda     #>JMP_DRAW_PIXEL
-                sta     pixel_rtn+1
+draw_piece      lda     #<draw_block
+                sta     block_rtn
+                lda     #>draw_block
+                sta     block_rtn+1
                 jmp     update_piece
-clear_piece:    lda     #<JMP_RMV_PIXEL
-                sta     pixel_rtn
-                lda     #>JMP_RMV_PIXEL
-                sta     pixel_rtn+1
+clear_piece:    lda     #<clear_block
+                sta     block_rtn
+                lda     #>clear_block
+                sta     block_rtn+1
+                jmp     update_piece
+verify_piece:   lda     #<verify_block
+                sta     block_rtn
+                lda     #>verify_block
+                sta     block_rtn+1
 update_piece:   lda     piece_y         ; start drawing from the top
                 sta     block_y         ; coordinate of the piece
                 ldy     rotation
                 lda     (piece),y       ; first byte of piece to draw
-                jsr     .draw_byte
+                jsr     draw_byte
+                bcs     .done
                 inc     block_y         ; move one down for each nibble
                 iny
                 lda     (piece),y       ; second byte of piece to draw
-                jsr     .draw_byte      ; todo: remove jsr / rts?
-                rts
-.draw_byte:     phy
-                jsr     .draw_nibble    ; split into two nibbles, and
+                jsr     draw_byte      ; todo: remove jsr / rts?
+.done:          rts
+
+;===========================================================================
+; Draw one byte of a piece, which is drawn as one row
+;===========================================================================
+draw_byte:      phy
+                jsr     draw_nibble    ; split into two nibbles, and
+                bcs     .done
                 inc     block_y         ; move one down for each nibble
-                jsr     .draw_nibble    ; increment y pos in between
-                ply
+                jsr     draw_nibble    ; increment y pos in between
+.done:          ply
                 rts
-.draw_nibble:   ldx     #4
+
+;===========================================================================
+; Draw one nibble of a piece, which is drawn as one row
+;===========================================================================
+draw_nibble:    ldx     #4
                 ldy     piece_x         ; return to left coordinate of piece
                 sty     block_x
 .bit_loop:      asl                     ; next bit into carry
                 bcc     .empty_block
-                jsr     update_block
+                jsr     block_jump
+                bcs     .done           ; carry set means error: return and keep the carry flag
 .empty_block:   inc     block_x         ; move one block to the right
                 dex
                 bne     .bit_loop
 .done:          rts
 
+
+
 block_jump:     jmp     (block_rtn)
+
+
+
+
+draw_block:     pha
+                lda     #<JMP_DRAW_PIXEL
+                sta     pixel_rtn
+                lda     #>JMP_DRAW_PIXEL
+                sta     pixel_rtn+1
+                jsr     update_block
+                pla
+                clc                     ; always success
+                rts
+
+clear_block:    pha
+                lda     #<JMP_RMV_PIXEL
+                sta     pixel_rtn
+                lda     #>JMP_RMV_PIXEL
+                sta     pixel_rtn+1
+                jsr     update_block
+                pla
+                clc                     ; always success
+                rts
+
+verify_block:   pha
+                lda     block_x
+                cmp     #-1
+                beq     .fail
+                cmp     #10
+                beq     .fail
+                bra     .success
+.fail:          sec
+.success:       pla
+                rts
 
 ;===========================================================================
 ; Update a block at the position stored in block_x and block_y.
