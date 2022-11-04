@@ -49,7 +49,7 @@ init_game:      jsr     JMP_CURSOR_OFF
                 sta     piece_x
                 lda     #0
                 sta     piece_y
-                lda     #255
+                lda     #10
                 sta     game_delay
                 jsr     draw_piece
 
@@ -57,7 +57,7 @@ init_game:      jsr     JMP_CURSOR_OFF
 ; the main loop of the game
 ;============================================================
 loop:           jsr     handle_input
-                ; jsr     move_down
+                jsr     timed_down
                 jmp     loop
 
 ;============================================================
@@ -109,21 +109,30 @@ move_right:     inc     piece_x
                 jsr     draw_piece
                 rts
 
+
+move_down:      inc     piece_y
+                jsr     verify_piece
+                bcc     .do_move
+                dec     piece_y
+                rts
+.do_move:       dec     piece_y
+                jsr     clear_piece
+                inc     piece_y
+                jsr     draw_piece
+                rts
 ;============================================================
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
 ;============================================================
-move_down:      lda     ticks
+timed_down:     lda     ticks
                 sbc     toggle_time
                 cmp     game_delay
                 bcc     .done
                 lda     ticks
                 sta     toggle_time
-
-                jsr     clear_piece
-                inc     piece_y
-                jsr     draw_piece
+                jsr     move_down
 .done:          rts
+
 
 select_piece:   lda     #<piece_j
                 sta     piece
@@ -213,10 +222,19 @@ handle_nibble:  ldx     #4
 .done:          rts
 
 
-
+;===========================================================================
+; This is called by handle_nibble, and calls this for each bit in a nibble.
+; block_rtn is set before calling this, and can be either verify_block,
+; clear_block, or draw_block. This indirection is needed because the
+; 6502 doesn't have an indirect jsr operation, so it's done by jsr-ing to
+; this routine that does an indirect jmp
+;===========================================================================
 handle_block:   jmp     (block_rtn)
 
-
+;===========================================================================
+; This draws a block by setting pixel_rtn to JMP_DRAW_PIXEL and caling
+; update_block
+;===========================================================================
 draw_block:     pha
                 lda     #<JMP_DRAW_PIXEL
                 sta     pixel_rtn
@@ -227,6 +245,10 @@ draw_block:     pha
                 clc                     ; always success
                 rts
 
+;===========================================================================
+; This clears a block by setting pixel_rtn to JMP_RMV_PIXEL and caling
+; update_block
+;===========================================================================
 clear_block:    pha
                 lda     #<JMP_RMV_PIXEL
                 sta     pixel_rtn
@@ -237,11 +259,20 @@ clear_block:    pha
                 clc                     ; always success
                 rts
 
+;===========================================================================
+; This verifies if a block can be placed at the given coordinate. If the
+; verification fails, the carry flag is set. Otherwise it's cleared.
+; Verifications:
+;   - Does the block fall outside the side walls
+;===========================================================================
 verify_block:   pha
                 lda     block_x
                 cmp     #-1             ; to left of left wall
                 beq     .fail
                 cmp     #10             ; to right of right wall
+                beq     .fail
+                lda     block_y         ; bottom
+                cmp     #25
                 beq     .fail
                 bra     .success
 .fail:          sec
@@ -268,34 +299,34 @@ update_block:   pha
                 asl
                 tay
 
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 dex
                 dex
                 iny
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 dex
                 dex
                 iny
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 inx
-                jsr     pixel_jump
+                jsr     handle_pixel
                 ply
                 plx
                 pla
                 rts
 
 
-pixel_jump:     jmp     (pixel_rtn)
+handle_pixel:   jmp     (pixel_rtn)
 
 
 irq:            bit     T1CL            ; clear T1 interrupt
@@ -332,7 +363,8 @@ vline:          ldy     #0
 
 .done:          rts
 
-pieces:         .word   piece_l
+pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
+                .word   piece_t, piece_z
 
 piece_l:        .byte   %00101110, %00000000
                 .byte   %10001000, %11000000
