@@ -44,14 +44,17 @@ init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
                 jsr     draw_borders
-                jsr     select_piece
-                lda     #0
+                lda     #10
+                sta     game_delay
+                jsr     spawn
+                
+spawn:          lda     #5
                 sta     piece_x
                 lda     #0
                 sta     piece_y
-                lda     #10
-                sta     game_delay
+                jsr     select_piece
                 jsr     draw_piece
+                rts
 
 ;============================================================
 ; the main loop of the game
@@ -109,17 +112,21 @@ move_right:     inc     piece_x
                 jsr     draw_piece
                 rts
 
-
+;============================================================
+; Move the piece down. If it can't move down further, spawn
+; a new block
+;============================================================
 move_down:      inc     piece_y
                 jsr     verify_piece
                 bcc     .do_move
                 dec     piece_y
-                rts
+                jsr     spawn
+                bra     .done
 .do_move:       dec     piece_y
                 jsr     clear_piece
                 inc     piece_y
                 jsr     draw_piece
-                rts
+.done           rts
 ;============================================================
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
@@ -132,7 +139,6 @@ timed_down:     lda     ticks
                 sta     toggle_time
                 jsr     move_down
 .done:          rts
-
 
 select_piece:   lda     #<piece_j
                 sta     piece
