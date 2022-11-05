@@ -17,6 +17,9 @@ block_rtn       =       $46
 ticks           =       $50             ; 4 bytes
 toggle_time     =       $54
 game_delay      =       $55
+temp            =       $56             ; 2 bytes
+halt            =       $58
+temp2           =       $5a
 
                 .org    $0600
 
@@ -46,7 +49,9 @@ init_game:      jsr     JMP_CURSOR_OFF
                 jsr     draw_borders
                 lda     #10
                 sta     game_delay
+                stz     halt
                 jsr     spawn
+                jmp     loop
                 
 spawn:          lda     #5
                 sta     piece_x
@@ -61,7 +66,9 @@ spawn:          lda     #5
 ;============================================================
 loop:           jsr     handle_input
                 jsr     timed_down
-                jmp     loop
+                lda     halt
+                beq     loop
+                rts
 
 ;============================================================
 ; handle input from keyboard:
@@ -120,6 +127,7 @@ move_down:      inc     piece_y
                 jsr     verify_piece
                 bcc     .do_move
                 dec     piece_y
+                jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     spawn
                 bra     .done
 .do_move:       dec     piece_y
@@ -188,6 +196,11 @@ clear_piece:    lda     #<clear_block
 verify_piece:   lda     #<verify_block
                 sta     block_rtn
                 lda     #>verify_block
+                sta     block_rtn+1
+                jmp     handle_piece
+lock_piece:     lda     #<lock_block
+                sta     block_rtn
+                lda     #>lock_block
                 sta     block_rtn+1
 handle_piece:   lda     piece_y         ; start drawing from the top
                 sta     block_y         ; coordinate of the piece
@@ -280,11 +293,71 @@ verify_block:   pha
                 lda     block_y         ; bottom
                 cmp     #25
                 beq     .fail
+                jsr     has_block
+                bcs     .fail
                 bra     .success
 .fail:          sec
 .success:       pla
                 rts
 
+;===========================================================================
+; This locks a block into place when it can't move down further
+; This saves the coordinates of the block to the grid by transforming
+; its coordinates (block_x, block_y) to a cell in the grid and set that
+; cell to 1.
+;
+; Steps:
+;    1. for the y coordinate, get the address of the corresponding row.
+;       Example, for the bottom row, this is `row24`. This address can be
+;       found in the list of 16 bit addresses at `rows`. For `row24`, this
+;       is the 48th and 49th byte after `rows`, or y*2 and (y*2)+1. So
+;       loading these two value give the address of the start of the
+;       correct row. This needs to be read into a temp value in RAM so
+;       it can be accessed indirectly in the next step.
+;    2. With the address of the start of the correct row in temp and temp+1,
+;       we can index into that row with block_x
+;===========================================================================
+lock_block:     pha
+                phx
+                phy
+                jsr     ref_row_addr
+                lda     #1
+                ldy     block_x
+                sta     (temp2),y
+                ; sta     halt
+                ply                     ; always success
+                plx
+                pla
+                rts
+
+has_block:      pha
+                phx
+                phy
+                jsr     ref_row_addr
+                ldy     block_x
+                lda     (temp2),y
+                ror
+                ply                     ; cell contains 1 when there's a block, rotate into carry
+                plx
+                pla
+                rts
+
+ref_row_addr:   clc
+                lda     #<rows          ; low byte of `rows` in A
+                adc     block_y         ; add block y twice
+                adc     block_y
+                sta     temp             ; store in temp
+                lda     #0              ; add carry to high byte of `rows`
+                adc     #>rows
+                sta     temp+1           ; store in temp+1
+
+                lda     (temp)            ; load from 08b5, this returns the high byte of the start address of the row
+                sta     temp2
+                ldy     #1
+                lda     (temp),y
+                sta     temp2+1
+
+                rts
 ;===========================================================================
 ; Update a block at the position stored in block_x and block_y.
 ; This either draws or clears a block, depending on the method
@@ -401,18 +474,33 @@ piece_z:        .byte   %11000110, %00000000
                 .byte   %11000110, %00000000
                 .byte   %01001100, %10000000
 
+rows:           .word   row00, row01, row02, row03, row04, row05, row06
+                .word   row07, row08, row09, row10, row11, row12, row13
+                .word   row14, row15, row16, row17, row18, row19, row20
+                .word   row21, row22, row23, row24
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+row00:          .byte   0,0,0,0,0,0,0,0,0,0
+row01:          .byte   0,0,0,0,0,0,0,0,0,0
+row02:          .byte   0,0,0,0,0,0,0,0,0,0
+row03:          .byte   0,0,0,0,0,0,0,0,0,0
+row04:          .byte   0,0,0,0,0,0,0,0,0,0
+row05:          .byte   0,0,0,0,0,0,0,0,0,0
+row06:          .byte   0,0,0,0,0,0,0,0,0,0
+row07:          .byte   0,0,0,0,0,0,0,0,0,0
+row08:          .byte   0,0,0,0,0,0,0,0,0,0
+row09:          .byte   0,0,0,0,0,0,0,0,0,0
+row10:          .byte   0,0,0,0,0,0,0,0,0,0
+row11:          .byte   0,0,0,0,0,0,0,0,0,0
+row12:          .byte   0,0,0,0,0,0,0,0,0,0
+row13:          .byte   0,0,0,0,0,0,0,0,0,0
+row14:          .byte   0,0,0,0,0,0,0,0,0,0
+row15:          .byte   0,0,0,0,0,0,0,0,0,0
+row16:          .byte   0,0,0,0,0,0,0,0,0,0
+row17:          .byte   0,0,0,0,0,0,0,0,0,0
+row18:          .byte   0,0,0,0,0,0,0,0,0,0
+row19:          .byte   0,0,0,0,0,0,0,0,0,0
+row20:          .byte   0,0,0,0,0,0,0,0,0,0
+row21:          .byte   0,0,0,0,0,0,0,0,0,0
+row22:          .byte   0,0,0,0,0,0,0,0,0,0
+row23:          .byte   0,0,0,0,0,0,0,0,0,0
+row24:          .byte   0,0,0,0,0,0,0,0,0,0
