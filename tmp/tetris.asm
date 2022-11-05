@@ -17,9 +17,8 @@ block_rtn       =       $46
 ticks           =       $50             ; 4 bytes
 toggle_time     =       $54
 game_delay      =       $55
-temp            =       $56             ; 2 bytes
-halt            =       $58
-temp2           =       $5a
+halt            =       $56
+drop            =       $57
 
                 .org    $0600
 
@@ -47,9 +46,10 @@ init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
                 jsr     draw_borders
-                lda     #10
+                lda     #50
                 sta     game_delay
                 stz     halt
+                stz     drop
                 jsr     spawn
                 jmp     loop
                 
@@ -104,8 +104,11 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 jsr     move_left
                 bra     .done
 .right_q:       cmp     #28
-                bne     .done
+                bne     .down_q
                 jsr     move_right
+.down_q         cmp     #31
+                bne     .done
+                jsr     drop_piece
 .done           rts
 
 ;============================================================
@@ -136,6 +139,9 @@ move_right:     inc     piece_x
                 jsr     draw_piece
                 rts
 
+drop_piece:     lda     #1
+                sta     drop
+                rts
 ;============================================================
 ; Move the piece down. If it can't move down further, spawn
 ; a new block
@@ -144,6 +150,7 @@ move_down:      inc     piece_y
                 jsr     verify_piece
                 bcc     .do_move
                 dec     piece_y
+                stz     drop
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     spawn
                 bra     .done
@@ -156,11 +163,13 @@ move_down:      inc     piece_y
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
 ;============================================================
-timed_down:     lda     ticks
+timed_down:     lda     drop
+                bne     .drop
+                lda     ticks
                 sbc     toggle_time
                 cmp     game_delay
                 bcc     .done
-                lda     ticks
+.drop:          lda     ticks
                 sta     toggle_time
                 jsr     move_down
 .done:          rts
@@ -330,7 +339,7 @@ has_block:      pha
                 phx
                 jsr     cell_index
                 lda     rows, x
-                ror
+                ror                     ; if cell is filled, this rotates 1 into carry
                 plx
                 pla
                 rts
