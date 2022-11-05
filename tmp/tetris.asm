@@ -47,7 +47,7 @@ init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
                 jsr     draw_borders
-                lda     #10
+                lda     #30
                 sta     game_delay
                 stz     halt
                 jsr     spawn
@@ -59,6 +59,23 @@ spawn:          lda     #5
                 sta     piece_y
                 jsr     select_piece
                 jsr     draw_piece
+                rts
+
+;============================================================
+; select a piece to spawn
+;============================================================
+select_piece:   ldy     ticks
+                ldx     #13
+.loop2:         lda     pieces,x
+                sta     piece+1
+                dex
+                lda     pieces,x
+                sta     piece
+                dex
+                bpl     .next
+                ldx     #13
+.next:          dey
+                bne     .loop2
                 rts
 
 ;============================================================
@@ -147,12 +164,6 @@ timed_down:     lda     ticks
                 sta     toggle_time
                 jsr     move_down
 .done:          rts
-
-select_piece:   lda     #<piece_j
-                sta     piece
-                lda     #>piece_j
-                sta     piece + 1
-                rts
 
 rotate:         jsr     do_rotate
                 jsr     verify_piece
@@ -324,7 +335,6 @@ lock_block:     pha
                 lda     #1
                 ldy     block_x
                 sta     (temp2),y
-                ; sta     halt
                 ply                     ; always success
                 plx
                 pla
