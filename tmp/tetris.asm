@@ -85,6 +85,9 @@ loop:           jsr     handle_input
                 jsr     timed_down
                 lda     halt
                 beq     loop
+                jsr     JMP_CURSOR_ON
+                lda     #12             ; clear screen
+                jsr     JMP_PUTC
                 rts
 
 ;============================================================
@@ -107,8 +110,12 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 bne     .down_q
                 jsr     move_right
 .down_q         cmp     #31
-                bne     .done
+                bne     .exit_q
                 jsr     drop_piece
+.exit_q:        cmp     #"q"
+                bne     .done
+                lda     #1
+                sta     halt
 .done           rts
 
 ;============================================================
