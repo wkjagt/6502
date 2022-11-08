@@ -423,6 +423,7 @@ collapse_rows:  ldx     #24
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down
+                inx
 .not_complete:  dex
                 bne     .next_row
                 rts
@@ -450,7 +451,6 @@ verify_row:     phx
 
 move_rows_down: phx
                 dex     ; the row above the completed
-                
 .next_row:      jsr     move_row_down
                 dex
                 bne     .next_row
