@@ -423,7 +423,7 @@ collapse_rows:  ldx     #24
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down
-                inx
+                bra     .next_row
 .not_complete:  dex
                 bne     .next_row
                 rts
