@@ -18,6 +18,7 @@ score           =       $48             ; 2 bytes, BCD
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
+temp            =       $57
 
 
 ; flags
@@ -181,8 +182,6 @@ move_down:      inc     piece_y
                 and     #~DROP
                 sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
-                lda     #1
-                jsr     inc_score
                 jsr     collapse_rows
                 jsr     spawn
                 bcc     .done
@@ -442,14 +441,17 @@ handle_pixel:   jmp     (pixel_rtn)
 ; Go over all rows and collapse complete rows
 ;===========================================================================
 collapse_rows:  ldx     #23
+                stz     temp
 .next_row       jsr     verify_row
                 bcc     .not_complete
-                lda     #10
-                jsr     inc_score
                 jsr     move_rows_down  ; move the rows above this
+                inc     temp
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
+                ldy     temp            ; todo: use y directly for this
+                lda     row_scores, y
+                jsr     inc_score
                 rts
 ;===========================================================================
 ; Verify if a row is complete
@@ -564,6 +566,9 @@ draw_bottom:    ldy     #92
                 cpx     #101
                 bne     .loop
 .done:          rts
+
+                ; scores are in hex representation of decimal
+row_scores:     .byte   0, $10, $25, $50, $75
 
 pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
                 .word   piece_t, piece_z
