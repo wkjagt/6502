@@ -14,7 +14,7 @@ cell_x          =       $42
 cell_y          =       $43
 pixel_rtn       =       $44             ; 2 bytes
 cell_rtn        =       $46             ; 2 bytes
-score           =       $48             ; 4 bytes, lazy BCD
+score           =       $48             ; 2 bytes, BCD
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
@@ -30,19 +30,32 @@ GAME_OVER       =       4
 init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
-                jsr     draw_borders
+                jsr     draw_walls
+                jsr     draw_bottom
                 lda     #50
                 sta     game_delay
                 stz     flags
                 stz     score
                 stz     score+1
+
+                lda     #$0e
+                jsr     JMP_PUTC
+                lda     #0
+                jsr     JMP_PUTC
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24
+                jsr     JMP_PUTC
+                jsr     JMP_PRINT_STRING
+                .byte   "                             SCORE: 0000 LEVEL: 001",0
+
                 jsr     clear_grid
                 jsr     spawn
                 jmp     main_loop
                 
 clear_grid:     ldx     #0
 .loop:          stz     rows,x
-                cpx     #250
+                cpx     #230
                 beq     .done
                 inx
                 bra     .loop
@@ -168,6 +181,7 @@ move_down:      inc     piece_y
                 and     #~DROP
                 sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
+                jsr     inc_score
                 jsr     collapse_rows
                 jsr     spawn
                 bcc     .done
@@ -328,7 +342,7 @@ verify_cell:    pha
                 cmp     #10             ; to right of right wall
                 beq     .fail
                 lda     cell_y         ; bottom
-                cmp     #25
+                cmp     #23
                 beq     .fail
                 jsr     cell_filled
                 bcs     .fail
@@ -426,7 +440,7 @@ handle_pixel:   jmp     (pixel_rtn)
 ;===========================================================================
 ; Go over all rows and collapse complete rows
 ;===========================================================================
-collapse_rows:  ldx     #24
+collapse_rows:  ldx     #23
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down  ; move the rows above this
@@ -512,29 +526,39 @@ inc_score:      sed
                 adc     #0              ; + carry
                 sta     score+1
 .done:          cld
+                lda     #$0e            ; cursor y
+                jsr     JMP_PUTC
+                lda     #36
+                jsr     JMP_PUTC        ; cursor x
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24
+                jsr     JMP_PUTC
+                lda     score+1
+                jsr     JMP_PRINT_HEX
+                lda     score
+                jsr     JMP_PRINT_HEX
                 rts
-                
 
-draw_borders:   ldx     #58
-                jsr     vline
+draw_walls:     ldx     #58
+                jsr     wall
                 ldx     #100
-                jsr     vline
+                jsr     wall
                 rts
 
-hline:          ldx     #0
-.loop:          jsr     JMP_DRAW_PIXEL
-                inx
-                cpx     #160
-                bne     .loop
-
-.done:          rts
-
-vline:          ldy     #0
+wall:           ldy     #0
 .loop:          jsr     JMP_DRAW_PIXEL
                 iny
-                cpy     #100
+                cpy     #92
                 bne     .loop
+.done:          rts
 
+draw_bottom:    ldy     #92
+                ldx     #58
+.loop:          jsr     JMP_DRAW_PIXEL
+                inx
+                cpx     #101
+                bne     .loop
 .done:          rts
 
 pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
@@ -573,6 +597,6 @@ row_indeces:    .byte   0,   10,  20,  30,  40
                 .byte   50,  60,  70,  80,  90
                 .byte   100, 110, 120, 130, 140
                 .byte   150, 160, 170, 180, 190
-                .byte   200, 210, 220, 230, 240
+                .byte   200, 210, 220
 
-rows:           ; 250 bytes are set to 0 on init
+rows:           ; 230 bytes are set to 0 on init
