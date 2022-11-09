@@ -181,6 +181,7 @@ move_down:      inc     piece_y
                 and     #~DROP
                 sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
+                lda     #1
                 jsr     inc_score
                 jsr     collapse_rows
                 jsr     spawn
@@ -443,8 +444,9 @@ handle_pixel:   jmp     (pixel_rtn)
 collapse_rows:  ldx     #23
 .next_row       jsr     verify_row
                 bcc     .not_complete
-                jsr     move_rows_down  ; move the rows above this
+                lda     #10
                 jsr     inc_score
+                jsr     move_rows_down  ; move the rows above this
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
@@ -517,10 +519,12 @@ move_row_down:  pha
                 pla
                 rts
 
+;===========================================================================
+; Add A to socre and display new score
+;===========================================================================
 inc_score:      sed
                 clc
-                lda     score
-                adc     #1
+                adc     score
                 sta     score
                 lda     score+1
                 adc     #0              ; + carry
