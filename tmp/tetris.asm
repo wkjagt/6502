@@ -18,7 +18,6 @@ score           =       $48             ; 2 bytes, BCD
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
-temp            =       $57
 
 
 ; flags
@@ -441,15 +440,14 @@ handle_pixel:   jmp     (pixel_rtn)
 ; Go over all rows and collapse complete rows
 ;===========================================================================
 collapse_rows:  ldx     #23
-                stz     temp
+                ldy     #0
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down  ; move the rows above this
-                inc     temp
+                iny
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
-                ldy     temp            ; todo: use y directly for this
                 lda     row_scores, y
                 jsr     inc_score
                 rts
@@ -461,6 +459,7 @@ collapse_rows:  ldx     #23
 ; Carry clear: not complete
 ;===========================================================================
 verify_row:     phx
+                phy
                 lda     row_indeces,x
                 tax
                 ldy     #10
@@ -472,7 +471,8 @@ verify_row:     phx
                 sec
                 bra     .done
 .not_complete   clc
-.done:          plx
+.done:          ply
+                plx
                 rts
 
 move_rows_down: phx
