@@ -96,9 +96,7 @@ select_piece:   ldy     ticks
 ;============================================================
 loop:           jsr     handle_input
                 jsr     timed_down
-                lda     flags
-                and     #EXIT           ; halt flag
-                beq     loop
+                bbr0    flags, loop     ; bit 0: exit
                 jsr     JMP_CURSOR_ON
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
@@ -173,7 +171,7 @@ move_down:      inc     piece_y
                 jsr     verify_piece
                 bcc     .do_move
                 dec     piece_y         ; undo the inc
-                lda     flags
+                lda     flags           ; reset the drop flag
                 and     #~DROP
                 sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
@@ -189,9 +187,7 @@ move_down:      inc     piece_y
 ; move the piece down using the ticks timer and
 ; a speed (delay) variable
 ;============================================================
-timed_down:     lda     flags
-                and     #DROP
-                bne     .drop           ; skip delay if drop flag set
+timed_down:     bbs1    flags, .drop    ; skip delay if drop flag set
                 lda     ticks
                 sbc     last_ticks
                 cmp     game_delay
