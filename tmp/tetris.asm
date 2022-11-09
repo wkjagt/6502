@@ -13,8 +13,7 @@ piece_y         =       $41
 cell_x          =       $42
 cell_y          =       $43
 pixel_rtn       =       $44             ; 2 bytes
-cell_rtn        =       $46
-ticks           =       $50             ; 4 bytes
+cell_rtn        =       $46             ; 2 bytes
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
@@ -25,26 +24,6 @@ DROP            =       2
 GAME_OVER       =       4
 
                 .org    $0600
-
-                lda     #<irq
-                sta     JMP_IRQ_HANDLER + 1
-                lda     #>irq
-                sta     JMP_IRQ_HANDLER + 2
-
-init_timer:     lda     #%01000000      ; T1 free run mode
-                sta     ACR
-                lda     #$0e            ; every 10ms @ 1Mhz
-                sta     T1CL
-                lda     #$27
-                sta     T1CH
-                lda     #%11000000      ; enable interrupt for T1
-                sta     IER
-                stz     ticks
-                stz     ticks + 1
-                stz     ticks + 2
-                stz     ticks + 3
-                stz     last_ticks
-                cli
 
 init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
@@ -514,20 +493,6 @@ move_row_down:  pha
                 plx
                 pla
                 rts
-
-                
-
-irq:            bit     T1CL            ; clear T1 interrupt
-                inc     ticks
-                bne     .done
-                inc     ticks + 1
-                bne     .done
-                inc     ticks + 2
-                bne     .done
-                inc     ticks + 3
-.done:          rti
-
-
 
 draw_borders:   ldx     #58
                 jsr     vline
