@@ -17,7 +17,11 @@ cell_rtn        =       $46
 ticks           =       $50             ; 4 bytes
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
-flags           =       $56             ; bit 0: halt, bit 1: drop
+flags           =       $56             ; bit 0: exit, bit 1: drop
+
+; flags
+EXIT            =       1
+DROP            =       2
 
                 .org    $0600
 
@@ -48,7 +52,6 @@ init_game:      jsr     JMP_CURSOR_OFF
                 lda     #50
                 sta     game_delay
                 stz     flags
-                ; stz     drop
                 jsr     clear_grid
                 jsr     spawn
                 jmp     loop
@@ -94,7 +97,7 @@ select_piece:   ldy     ticks
 loop:           jsr     handle_input
                 jsr     timed_down
                 lda     flags
-                and     #1              ; halt flag
+                and     #EXIT           ; halt flag
                 beq     loop
                 jsr     JMP_CURSOR_ON
                 lda     #12             ; clear screen
@@ -126,7 +129,7 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 .exit_q:        cmp     #"q"
                 bne     .done
                 lda     flags
-                ora     #1
+                ora     #EXIT
                 sta     flags
 .done           rts
 
@@ -159,7 +162,7 @@ move_right:     inc     piece_x
                 rts
 
 drop_piece:     lda     flags
-                ora     #2              ; %00000010
+                ora     #DROP
                 sta     flags
                 rts
 ;============================================================
@@ -171,7 +174,7 @@ move_down:      inc     piece_y
                 bcc     .do_move
                 dec     piece_y         ; undo the inc
                 lda     flags
-                and     #%11111101      ; drop flag to 0
+                and     #~DROP
                 sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     collapse_rows
@@ -187,7 +190,7 @@ move_down:      inc     piece_y
 ; a speed (delay) variable
 ;============================================================
 timed_down:     lda     flags
-                and     #%00000010
+                and     #DROP
                 bne     .drop           ; skip delay if drop flag set
                 lda     ticks
                 sbc     last_ticks
