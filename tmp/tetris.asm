@@ -14,9 +14,11 @@ cell_x          =       $42
 cell_y          =       $43
 pixel_rtn       =       $44             ; 2 bytes
 cell_rtn        =       $46             ; 2 bytes
+score           =       $48             ; 4 bytes, lazy BCD
 last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
+
 
 ; flags
 EXIT            =       1
@@ -32,9 +34,11 @@ init_game:      jsr     JMP_CURSOR_OFF
                 lda     #50
                 sta     game_delay
                 stz     flags
+                stz     score
+                stz     score+1
                 jsr     clear_grid
                 jsr     spawn
-                jmp     loop
+                jmp     main_loop
                 
 clear_grid:     ldx     #0
 .loop:          stz     rows,x
@@ -43,7 +47,6 @@ clear_grid:     ldx     #0
                 inx
                 bra     .loop
 .done:          rts
-
 
 
 spawn:          lda     #5
@@ -78,13 +81,18 @@ select_piece:   ldy     ticks
 ;============================================================
 ; the main loop of the game
 ;============================================================
-loop:           jsr     handle_input
+main_loop:      jsr     handle_input
                 jsr     timed_down
                 bcs     .exit           ; game over
-                bbr0    flags, loop     ; bit 0: exit
+                bbr0    flags, main_loop     ; bit 0: exit
 .exit:          jsr     JMP_CURSOR_ON
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
+                lda     score+1
+                jsr     JMP_PRINT_HEX
+                lda     score
+                jsr      JMP_PRINT_HEX
+
                 rts
 
 ;============================================================
@@ -422,6 +430,7 @@ collapse_rows:  ldx     #24
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down  ; move the rows above this
+                jsr     inc_score
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
@@ -493,6 +502,18 @@ move_row_down:  pha
                 plx
                 pla
                 rts
+
+inc_score:      sed
+                clc
+                lda     score
+                adc     #1
+                sta     score
+                lda     score+1
+                adc     #0              ; + carry
+                sta     score+1
+.done:          cld
+                rts
+                
 
 draw_borders:   ldx     #58
                 jsr     vline
