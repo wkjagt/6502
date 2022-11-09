@@ -157,8 +157,8 @@ drop_piece:     lda     #1
 move_down:      inc     piece_y
                 jsr     verify_piece
                 bcc     .do_move
-                dec     piece_y
-                stz     drop
+                dec     piece_y         ; undo the inc
+                stz     drop            ; set the drop flag to false
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     collapse_rows
                 jsr     spawn
@@ -422,7 +422,7 @@ handle_pixel:   jmp     (pixel_rtn)
 collapse_rows:  ldx     #24
 .next_row       jsr     verify_row
                 bcc     .not_complete
-                jsr     move_rows_down
+                jsr     move_rows_down  ; move the rows above this
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
@@ -472,16 +472,20 @@ move_row_down:  pha
                 phy
                 stx     cell_y     
                 stz     cell_x          ; start from x=0 (left)
-.loop:          jsr     cell_filled
+.loop:          jsr     cell_filled     ; is the above cell filled?
                 bcc     .erase          ; if the source row is empty, erase the one below
                 inc     cell_y          ; inc to draw/erase a cell in the row below
+                jsr     cell_filled     ; is the target cell filled?
+                bcs     .next           ; already filled, no need to fill
                 jsr     draw_cell
                 jsr     lock_cell
-                bra     .dont_erase
+                bra     .next
 .erase:         inc     cell_y
+                jsr     cell_filled
+                bcc     .next           ; already empty, no need to erase
                 jsr     erase_cell
                 jsr     free_cell
-.dont_erase:    dec     cell_y
+.next:          dec     cell_y
                 inc     cell_x          ; next cell to the right
                 lda     cell_x
                 cmp     #10
