@@ -22,6 +22,7 @@ flags           =       $56             ; bit 0: exit, bit 1: drop
 ; flags
 EXIT            =       1
 DROP            =       2
+GAME_OVER       =       4
 
                 .org    $0600
 
@@ -71,7 +72,11 @@ spawn:          lda     #5
                 lda     #0
                 sta     piece_y
                 jsr     select_piece
-                jsr     draw_piece
+                jsr     verify_piece
+                bcc     .draw
+                rts                     ; unable to spawn: end of game
+.draw:          jsr     draw_piece
+                clc
                 rts
 
 ;============================================================
@@ -96,8 +101,9 @@ select_piece:   ldy     ticks
 ;============================================================
 loop:           jsr     handle_input
                 jsr     timed_down
+                bcs     .exit           ; game over
                 bbr0    flags, loop     ; bit 0: exit
-                jsr     JMP_CURSOR_ON
+.exit:          jsr     JMP_CURSOR_ON
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
                 rts
@@ -177,7 +183,8 @@ move_down:      inc     piece_y
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     collapse_rows
                 jsr     spawn
-                bra     .done
+                bcc     .done
+                rts
 .do_move:       dec     piece_y
                 jsr     clear_piece
                 inc     piece_y
