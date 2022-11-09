@@ -51,9 +51,20 @@ init_game:      jsr     JMP_CURSOR_OFF
                 sta     game_delay
                 stz     halt
                 stz     drop
+                jsr     clear_grid
                 jsr     spawn
                 jmp     loop
                 
+clear_grid:     ldx     #0
+.loop:          stz     rows,x
+                cpx     #250
+                beq     .done
+                inx
+                bra     .loop
+.done:          rts
+
+
+
 spawn:          lda     #5
                 sta     piece_x
                 lda     #0
@@ -397,7 +408,6 @@ update_block:   pha
                 iny
                 jsr     handle_pixel
                 inx
-                jsr     handle_pixel
                 inx
                 jsr     handle_pixel
                 dex
@@ -569,28 +579,4 @@ row_indeces:    .byte   0,   10,  20,  30,  40
                 .byte   150, 160, 170, 180, 190
                 .byte   200, 210, 220, 230, 240
 
-rows:           .byte   0,0,0,0,0,0,0,0,0,0 ; row 0
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 1
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 2
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 3
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 4
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 5
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 6
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 7
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 8
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 9
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 10
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 11
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 12
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 13
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 14
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 15
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 16
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 17
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 18
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 19
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 20
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 21
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 22
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 23
-                .byte   0,0,0,0,0,0,0,0,0,0 ; row 24
+rows:           ; 250 bytes are set to 0 on init
