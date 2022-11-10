@@ -19,6 +19,11 @@ last_ticks      =       $54             ; ticks at last continue
 game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
 
+; keys
+ESC             =       27
+RIGHT_ARROW     =       28
+LEFT_ARROW      =       29
+DOWN_ARROW      =       31
 
 ; flags
 EXIT            =       1
@@ -123,17 +128,17 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 cmp     #" "            ; space to rotate
                 bne     .left_q
                 jsr     rotate
-.left_q:        cmp     #29
+.left_q:        cmp     #LEFT_ARROW
                 bne     .right_q
                 jsr     move_left
                 bra     .done
-.right_q:       cmp     #28
+.right_q:       cmp     #RIGHT_ARROW
                 bne     .down_q
                 jsr     move_right
-.down_q         cmp     #31
+.down_q         cmp     #DOWN_ARROW
                 bne     .exit_q
                 jsr     drop_piece
-.exit_q:        cmp     #"q"
+.exit_q:        cmp     #ESC
                 bne     .pause_q
                 jsr     exit
 .pause_q:       cmp     #"p"
