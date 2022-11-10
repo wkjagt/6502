@@ -16,8 +16,8 @@ pixel_rtn       =       $44             ; 2 bytes
 cell_rtn        =       $46             ; 2 bytes
 score           =       $48             ; 2 bytes, BCD
 last_ticks      =       $54             ; ticks at last continue
-game_delay      =       $55             ; how many ticks between move down (game speed)
 flags           =       $56             ; bit 0: exit, bit 1: drop
+level           =       $57
 
 ; keys
 ESC             =       27
@@ -38,22 +38,21 @@ init_game:      jsr     JMP_CURSOR_OFF
                 jsr     JMP_PUTC
                 jsr     draw_walls
                 jsr     draw_bottom
-                lda     #50
-                sta     game_delay
                 stz     flags
                 stz     score
                 stz     score+1
+                stz     level
 
                 lda     #$0e
                 jsr     JMP_PUTC
-                lda     #0
+                lda     #29
                 jsr     JMP_PUTC
                 lda     #$0f
                 jsr     JMP_PUTC
                 lda     #24
                 jsr     JMP_PUTC
                 jsr     JMP_PRINT_STRING
-                .byte   "                             SCORE: 0000 LEVEL: 001",0
+                .byte   "SCORE: 0000 LEVEL: 000",0
 
                 jsr     clear_grid
                 jsr     spawn
@@ -226,7 +225,8 @@ move_down:      inc     piece_y
 timed_down:     bbs1    flags, .drop    ; skip delay if drop flag set
                 lda     ticks
                 sbc     last_ticks
-                cmp     game_delay
+                ldx     level
+                cmp     level_delays,x
                 bcc     .done
 .drop:          lda     ticks
                 sta     last_ticks
@@ -557,6 +557,19 @@ inc_score:      sed
                 clc
                 adc     score
                 sta     score
+                bcc     .done
+                inc     level
+
+                lda     #$0e            ; cursor y
+                jsr     JMP_PUTC
+                lda     #49
+                jsr     JMP_PUTC        ; cursor x
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24
+                jsr     JMP_PUTC
+                lda     level
+                jsr     JMP_PRINT_HEX
                 lda     score+1
                 adc     #0              ; + carry
                 sta     score+1
@@ -595,6 +608,11 @@ draw_bottom:    ldy     #92
                 cpx     #101
                 bne     .loop
 .done:          rts
+
+;===========================================================================
+; Data
+;===========================================================================
+level_delays:   .byte   100, 90, 80, 70, 60, 50, 40, 30, 20, 10
 
                 ; scores are in hex representation of decimal
 row_scores:     .byte   0, $10, $25, $50, $75
