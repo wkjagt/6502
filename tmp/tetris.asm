@@ -24,6 +24,7 @@ flags           =       $56             ; bit 0: exit, bit 1: drop
 EXIT            =       1
 DROP            =       2
 GAME_OVER       =       4
+PAUSE           =       8
 
                 .org    $0600
 
@@ -95,9 +96,10 @@ select_piece:   ldy     ticks
 ; the main loop of the game
 ;============================================================
 main_loop:      jsr     handle_input
+                bbs3    flags, main_loop
                 jsr     timed_down
                 bcs     .exit           ; game over
-                bbr0    flags, main_loop     ; bit 0: exit
+                bbr0    flags, main_loop; bit 0: exit
 .exit:          jsr     JMP_CURSOR_ON
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
@@ -117,6 +119,7 @@ main_loop:      jsr     handle_input
 handle_input:   lda     $6000           ; has key? todo: make nonblocking OS call for this
                 bpl     .done
                 jsr     JMP_GETC
+                bbs3    flags, .exit_q  ; only allow unpause and exit when paused
                 cmp     #" "            ; space to rotate
                 bne     .left_q
                 jsr     rotate
@@ -131,11 +134,32 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 bne     .exit_q
                 jsr     drop_piece
 .exit_q:        cmp     #"q"
+                bne     .pause_q
+                jsr     exit
+.pause_q:       cmp     #"p"
                 bne     .done
+                jsr     toggle_pause
+.done           rts
+
+exit:           pha
                 lda     flags
                 ora     #EXIT
+                and     #~PAUSE
                 sta     flags
-.done           rts
+                pla
+                rts
+
+toggle_pause:   pha
+                bbs3    flags, .unpause
+                lda     flags
+                ora     #PAUSE
+                sta     flags
+                bra     .done
+.unpause:       lda     flags
+                and     #~PAUSE
+                sta     flags
+.done:          pla
+                rts
 
 ;============================================================
 ; Move the piece to the left
