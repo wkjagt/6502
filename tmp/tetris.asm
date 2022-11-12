@@ -176,13 +176,8 @@ exit:           pha
 ; Pause / unpause the game by toggling the pause flag
 ;============================================================
 toggle_pause:   pha
-                bbs3    flags, .unpause
                 lda     flags
-                ora     #PAUSE
-                sta     flags
-                bra     .done
-.unpause:       lda     flags
-                and     #~PAUSE
+                eor     #PAUSE
                 sta     flags
 .done:          pla
                 rts
