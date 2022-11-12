@@ -33,6 +33,13 @@ PAUSE           =       8
 
                 .org    $0600
 
+;============================================================
+; - Initialize all game values
+; - Print the information line at the bottom
+; - Clear the grid
+; - Spawn a new piece at the top
+; - Start the main game loop
+;============================================================
 init_game:      jsr     JMP_CURSOR_OFF
                 lda     #12             ; clear screen
                 jsr     JMP_PUTC
@@ -57,7 +64,27 @@ init_game:      jsr     JMP_CURSOR_OFF
                 jsr     clear_grid
                 jsr     spawn
                 jmp     main_loop
-                
+
+;============================================================
+; The main loop of the game
+;============================================================
+main_loop:      jsr     handle_input
+                bbs3    flags, main_loop; game is paused
+                jsr     timed_down
+                bcs     .exit           ; game over when timed down wasn't able to spawn
+                bbr0    flags, main_loop; bit 0: exit
+.exit:          jsr     JMP_CURSOR_ON
+                lda     #12             ; clear screen
+                jsr     JMP_PUTC
+                lda     score+1
+                jsr     JMP_PRINT_HEX
+                lda     score
+                jsr      JMP_PRINT_HEX
+                rts
+
+;============================================================
+; Clear enough bytes to hold the grid data
+;============================================================
 clear_grid:     ldx     #0
 .loop:          stz     rows,x
                 cpx     #230
@@ -67,6 +94,11 @@ clear_grid:     ldx     #0
 .done:          rts
 
 
+;============================================================
+; Spawn a new piece. Sets the carry flag if spawning didn't
+; work. This happens when the grid has piled up so far,
+; there's no space for the new piece to be drawn.
+;============================================================
 spawn:          lda     #5
                 sta     piece_x
                 lda     #0
@@ -80,7 +112,9 @@ spawn:          lda     #5
                 rts
 
 ;============================================================
-; select a piece to spawn
+; Select a piece to spawn. This is semi-random, and based on
+; the number of current ticks in the least significant
+; ticks byte (the one that increments every 10ms)
 ;============================================================
 select_piece:   ldy     ticks
                 ldx     #13
@@ -94,24 +128,6 @@ select_piece:   ldy     ticks
                 ldx     #13
 .next:          dey
                 bne     .loop2
-                rts
-
-;============================================================
-; the main loop of the game
-;============================================================
-main_loop:      jsr     handle_input
-                bbs3    flags, main_loop
-                jsr     timed_down
-                bcs     .exit           ; game over
-                bbr0    flags, main_loop; bit 0: exit
-.exit:          jsr     JMP_CURSOR_ON
-                lda     #12             ; clear screen
-                jsr     JMP_PUTC
-                lda     score+1
-                jsr     JMP_PRINT_HEX
-                lda     score
-                jsr      JMP_PRINT_HEX
-
                 rts
 
 ;============================================================
@@ -145,6 +161,9 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 jsr     toggle_pause
 .done           rts
 
+;============================================================
+; Exit the game by setting the exit flag
+;============================================================
 exit:           pha
                 lda     flags
                 ora     #EXIT
@@ -153,6 +172,9 @@ exit:           pha
                 pla
                 rts
 
+;============================================================
+; Pause / unpause the game by toggling the pause flag
+;============================================================
 toggle_pause:   pha
                 bbs3    flags, .unpause
                 lda     flags
@@ -193,6 +215,9 @@ move_right:     inc     piece_x
                 jsr     draw_piece
                 rts
 
+;============================================================
+; Set the drop flag
+;============================================================
 drop_piece:     lda     flags
                 ora     #DROP
                 sta     flags
@@ -233,6 +258,9 @@ timed_down:     bbs1    flags, .drop    ; skip delay if drop flag set
                 jsr     move_down
 .done:          rts
 
+;============================================================
+;
+;============================================================
 rotate:         jsr     do_rotate
                 jsr     verify_piece
                 bcs     .no_rotate
@@ -244,6 +272,9 @@ rotate:         jsr     do_rotate
 .no_rotate:     jsr     undo_rotate
 .done:          rts
 
+;============================================================
+;
+;============================================================
 do_rotate:      clc
                 lda     rotation
                 adc     #2
@@ -251,6 +282,9 @@ do_rotate:      clc
                 sta     rotation
                 rts
 
+;============================================================
+;
+;============================================================
 undo_rotate:    jsr     do_rotate
                 jsr     do_rotate
                 jsr     do_rotate
@@ -394,6 +428,9 @@ lock_cell:      pha
                 pla
                 rts
 
+;============================================================
+;
+;============================================================
 free_cell:      pha
                 phx
                 jsr     cell_index
@@ -402,6 +439,9 @@ free_cell:      pha
                 pla
                 rts
 
+;============================================================
+;
+;============================================================
 cell_filled:    pha
                 phx
                 jsr     cell_index
@@ -411,6 +451,9 @@ cell_filled:    pha
                 pla
                 rts
 
+;============================================================
+;
+;============================================================
 cell_index:     clc
                 ldx     cell_y
                 lda     row_indeces, x
@@ -463,6 +506,9 @@ update_block:   pha
                 rts
 
 
+;============================================================
+;
+;============================================================
 handle_pixel:   jmp     (pixel_rtn)
 
 ;===========================================================================
@@ -504,6 +550,9 @@ verify_row:     phx
                 plx
                 rts
 
+;============================================================
+;
+;============================================================
 move_rows_down: phx
                 dex     ; the row above the completed
 .next_row:      jsr     move_row_down
@@ -588,12 +637,18 @@ inc_score:      sed
                 jsr     JMP_PRINT_HEX
                 rts
 
+;============================================================
+;
+;============================================================
 draw_walls:     ldx     #58
                 jsr     wall
                 ldx     #100
                 jsr     wall
                 rts
 
+;============================================================
+;
+;============================================================
 wall:           ldy     #0
 .loop:          jsr     JMP_DRAW_PIXEL
                 iny
@@ -601,6 +656,9 @@ wall:           ldy     #0
                 bne     .loop
 .done:          rts
 
+;============================================================
+;
+;============================================================
 draw_bottom:    ldy     #92
                 ldx     #58
 .loop:          jsr     JMP_DRAW_PIXEL
