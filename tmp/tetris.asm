@@ -602,8 +602,11 @@ move_row_down:  pha
                 pla
                 rts
 
-inc_clr_rows:   inc     cleared_rows
-
+inc_clr_rows:   sed
+                clc
+                lda     cleared_rows
+                adc     #1
+                sta     cleared_rows
                 lda     #$0e            ; cursor y
                 jsr     JMP_PUTC
                 lda     #54
@@ -612,17 +615,19 @@ inc_clr_rows:   inc     cleared_rows
                 jsr     JMP_PUTC
                 lda     #24
                 jsr     JMP_PUTC
-
-
-
-
                 lda     cleared_rows
                 jsr     JMP_PRINT_HEX
                 cld
                 rts
 
-inc_level:      lda     cleared_rows
-                lsr                     ; incr level every 8 cleared rows
+;===========================================================================
+; Level is calculated based on cleared rows. Level increases for every
+; 10 cleared rows. cleared_rows is stored as DCB, so we can shift the
+; left nibble into the right nibble and have the 10s place in the 1s place.
+;===========================================================================
+inc_level:      lda     cleared_rows    ; NOTE: this is in BCD
+                lsr
+                lsr
                 lsr
                 lsr
                 sta     level
