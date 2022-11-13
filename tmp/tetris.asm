@@ -75,13 +75,16 @@ main_loop:      jsr     handle_input
                 jsr     timed_down
                 bcs     .exit           ; game over when timed down wasn't able to spawn
                 bbr0    flags, main_loop; bit 0: exit
-.exit:          jsr     JMP_CURSOR_ON
-                lda     #12             ; clear screen
+.exit:          ldx     #24             ; scroll up 24 rows to keep score etc
+.scroll:        lda     #$14
                 jsr     JMP_PUTC
-                lda     score+1
-                jsr     JMP_PRINT_HEX
-                lda     score
-                jsr      JMP_PRINT_HEX
+                dex
+                bne     .scroll
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #2
+                jsr     JMP_PUTC
+                jsr     JMP_CURSOR_ON
                 rts
 
 ;============================================================
@@ -94,7 +97,6 @@ clear_grid:     ldx     #0
                 inx
                 bra     .loop
 .done:          rts
-
 
 ;============================================================
 ; Spawn a new piece. Sets the carry flag if spawning didn't
@@ -162,8 +164,12 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 jsr     exit
                 bra     .done
 .pause_q:       cmp     #"p"
-                bne     .done
+                bne     .restart_q
                 jsr     toggle_pause
+                bra     .done
+.restart_q:     cmp     #"r"
+                bne     .done
+                jmp     init_game
 .done           rts
 
 ;============================================================
@@ -607,14 +613,8 @@ inc_clr_rows:   sed
                 lda     cleared_rows
                 adc     #1
                 sta     cleared_rows
-                lda     #$0e            ; cursor y
-                jsr     JMP_PUTC
-                lda     #54
-                jsr     JMP_PUTC        ; cursor x
-                lda     #$0f
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
+                ldx     #54
+                jsr     set_info_cursor
                 lda     cleared_rows
                 jsr     JMP_PRINT_HEX
                 cld
@@ -631,14 +631,9 @@ inc_level:      lda     cleared_rows    ; NOTE: this is in BCD
                 lsr
                 lsr
                 sta     level
-                lda     #$0e            ; cursor y
-                jsr     JMP_PUTC
-                lda     #44
-                jsr     JMP_PUTC        ; cursor x
-                lda     #$0f
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
+
+                ldx     #44
+                jsr     set_info_cursor
                 lda     level
                 jsr     JMP_PRINT_HEX
                 rts
@@ -662,14 +657,8 @@ inc_score:      phy
                 bne     .loop
 
                 ; print score
-                lda     #$0e            ; cursor y
-                jsr     JMP_PUTC
-                lda     #31
-                jsr     JMP_PUTC        ; cursor x
-                lda     #$0f
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
+                ldx     #31
+                jsr     set_info_cursor
                 lda     score+1
                 jsr     JMP_PRINT_HEX
                 lda     score
@@ -679,7 +668,21 @@ inc_score:      phy
                 rts
 
 ;============================================================
-;
+; Set the cursor to the correct position to print information
+; to the info line at the bottom.
+;============================================================
+set_info_cursor:lda     #$0e
+                jsr     JMP_PUTC
+                txa                     ; cursor x
+                jsr     JMP_PUTC
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24             ; cursor y
+                jsr     JMP_PUTC
+                rts
+
+;============================================================
+; Draw the sidewalls of the grid
 ;============================================================
 draw_walls:     ldx     #58
                 jsr     wall
