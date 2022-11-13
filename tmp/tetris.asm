@@ -18,6 +18,7 @@ score           =       $48             ; 2 bytes, BCD
 last_ticks      =       $54             ; ticks at last continue
 flags           =       $56             ; bit 0: exit, bit 1: drop
 level           =       $57
+cleared_rows    =       $58
 
 ; keys
 ESC             =       27
@@ -49,17 +50,18 @@ init_game:      jsr     JMP_CURSOR_OFF
                 stz     score
                 stz     score+1
                 stz     level
+                stz     cleared_rows
 
                 lda     #$0e
                 jsr     JMP_PUTC
-                lda     #29
+                lda     #24
                 jsr     JMP_PUTC
                 lda     #$0f
                 jsr     JMP_PUTC
                 lda     #24
                 jsr     JMP_PUTC
                 jsr     JMP_PRINT_STRING
-                .byte   "SCORE: 0000 LEVEL: 000",0
+                .byte   "SCORE: 0000 LEVEL: 000 ROWS: 000",0
 
                 jsr     clear_grid
                 jsr     spawn
@@ -150,12 +152,15 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 .right_q:       cmp     #RIGHT_ARROW
                 bne     .down_q
                 jsr     move_right
+                bra     .done
 .down_q         cmp     #DOWN_ARROW
                 bne     .exit_q
                 jsr     drop_piece
+                bra     .done
 .exit_q:        cmp     #ESC
                 bne     .pause_q
                 jsr     exit
+                bra     .done
 .pause_q:       cmp     #"p"
                 bne     .done
                 jsr     toggle_pause
@@ -509,18 +514,20 @@ handle_pixel:   jmp     (pixel_rtn)
 ;===========================================================================
 ; Go over all rows and collapse complete rows
 ;===========================================================================
-collapse_rows:  ldx     #23
-                ldy     #0
+collapse_rows:  ldx     #23             ; total number of rows
+                ldy     #0              ; used to count cleared rows
 .next_row       jsr     verify_row
                 bcc     .not_complete
                 jsr     move_rows_down  ; move the rows above this
                 iny
+                jsr     inc_clr_rows
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
                 cpy     #0              ; don't inc score if 0 rows cleared
                 beq     .done
                 jsr     inc_score
+                jsr     inc_level
 .done           rts
 ;===========================================================================
 ; Verify if a row is complete
@@ -595,10 +602,47 @@ move_row_down:  pha
                 pla
                 rts
 
+inc_clr_rows:   inc     cleared_rows
+
+                lda     #$0e            ; cursor y
+                jsr     JMP_PUTC
+                lda     #54
+                jsr     JMP_PUTC        ; cursor x
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24
+                jsr     JMP_PUTC
+
+
+
+
+                lda     cleared_rows
+                jsr     JMP_PRINT_HEX
+                cld
+                rts
+
+inc_level:      lda     cleared_rows
+                lsr                     ; incr level every 8 cleared rows
+                lsr
+                lsr
+                sta     level
+                lda     #$0e            ; cursor y
+                jsr     JMP_PUTC
+                lda     #44
+                jsr     JMP_PUTC        ; cursor x
+                lda     #$0f
+                jsr     JMP_PUTC
+                lda     #24
+                jsr     JMP_PUTC
+                lda     level
+                jsr     JMP_PRINT_HEX
+                rts
+
 ;===========================================================================
 ; Increment score. Y contains the number of cleared rows
 ;===========================================================================
-inc_score:      ldx     level           ; use level as multiplier
+inc_score:      phy
+                ldx     level           ; use level as multiplier
                 inx                     ; start at level 0: 1 times increase
                 sed
 
@@ -612,23 +656,10 @@ inc_score:      ldx     level           ; use level as multiplier
                 dex
                 bne     .loop
 
-                ; print level
-                inc     level           ; todo: base on number of cleared rows
-                lda     #$0e            ; cursor y
-                jsr     JMP_PUTC
-                lda     #49
-                jsr     JMP_PUTC        ; cursor x
-                lda     #$0f
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
-                lda     level
-                jsr     JMP_PRINT_HEX
-
                 ; print score
                 lda     #$0e            ; cursor y
                 jsr     JMP_PUTC
-                lda     #36
+                lda     #31
                 jsr     JMP_PUTC        ; cursor x
                 lda     #$0f
                 jsr     JMP_PUTC
@@ -639,6 +670,7 @@ inc_score:      ldx     level           ; use level as multiplier
                 lda     score
                 jsr     JMP_PRINT_HEX
                 cld
+                ply
                 rts
 
 ;============================================================
@@ -678,8 +710,6 @@ level_delays:   .byte   100, 90, 80, 70, 60, 50, 40, 30, 20, 10
 
                 ; scores are in hex representation of decimal
 row_scores:     .byte   $0, $1, $5, $30, $80
-
-
 
 pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
                 .word   piece_t, piece_z
