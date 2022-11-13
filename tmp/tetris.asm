@@ -518,9 +518,10 @@ collapse_rows:  ldx     #23
                 bra     .next_row
 .not_complete:  dex
                 bne     .next_row
-                lda     row_scores, y
+                cpy     #0              ; don't inc score if 0 rows cleared
+                beq     .done
                 jsr     inc_score
-                rts
+.done           rts
 ;===========================================================================
 ; Verify if a row is complete
 ; X contains the index into the row to verify
@@ -595,15 +596,24 @@ move_row_down:  pha
                 rts
 
 ;===========================================================================
-; Add A to socre and display new score
+; Increment score. Y contains the number of cleared rows
 ;===========================================================================
-inc_score:      sed
-                clc
-                adc     score
-                sta     score
-                bcc     .done
-                inc     level
+inc_score:      ldx     level           ; use level as multiplier
+                inx                     ; start at level 0: 1 times increase
+                sed
 
+.loop:          clc
+                lda     score
+                adc     row_scores, y
+                sta     score
+                lda     score+1
+                adc     #0              ; + carry
+                sta     score+1
+                dex
+                bne     .loop
+
+                ; print level
+                inc     level           ; todo: base on number of cleared rows
                 lda     #$0e            ; cursor y
                 jsr     JMP_PUTC
                 lda     #49
@@ -614,10 +624,8 @@ inc_score:      sed
                 jsr     JMP_PUTC
                 lda     level
                 jsr     JMP_PRINT_HEX
-                lda     score+1
-                adc     #0              ; + carry
-                sta     score+1
-.done:          cld
+
+                ; print score
                 lda     #$0e            ; cursor y
                 jsr     JMP_PUTC
                 lda     #36
@@ -630,6 +638,7 @@ inc_score:      sed
                 jsr     JMP_PRINT_HEX
                 lda     score
                 jsr     JMP_PRINT_HEX
+                cld
                 rts
 
 ;============================================================
@@ -668,7 +677,9 @@ draw_bottom:    ldy     #92
 level_delays:   .byte   100, 90, 80, 70, 60, 50, 40, 30, 20, 10
 
                 ; scores are in hex representation of decimal
-row_scores:     .byte   0, $10, $25, $50, $75
+row_scores:     .byte   $0, $1, $5, $30, $80
+
+
 
 pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
                 .word   piece_t, piece_z
