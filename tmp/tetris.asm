@@ -262,7 +262,7 @@ move_down:      inc     piece_y
 ;============================================================
 ; Rotate the piece
 ;============================================================
-try_rotate_right:jsr     rotate_right
+try_rotate_right:jsr    rotate_right
                 jsr     verify_piece
                 bcs     .no_rotate
                 jsr     rotate_left
@@ -300,9 +300,11 @@ rotate_right:   clc
 ;============================================================
 ;
 ;============================================================
-rotate_left:    jsr     rotate_right
-                jsr     rotate_right
-                jsr     rotate_right
+rotate_left:    sec
+                lda     rotation
+                sbc     #2
+                and     #%00000111      ; rollover at 8
+                sta     rotation
                 rts
 
 ;===========================================================================
