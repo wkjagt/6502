@@ -112,6 +112,9 @@ spawn:          lda     #3
                 sta     piece_x
                 lda     #-1
                 sta     piece_y
+                lda     flags           ; reset the drop flag
+                and     #~DROP
+                sta     flags
                 jsr     select_piece
                 jsr     verify_piece
                 bcc     .draw
@@ -241,40 +244,36 @@ drop_piece:     lda     flags
 ;============================================================
 move_down:      inc     piece_y
                 jsr     verify_piece
-                bcc     .do_move
+                bcc     .move
                 dec     piece_y         ; undo the inc
-                lda     flags           ; reset the drop flag
-                and     #~DROP
-                sta     flags
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     collapse_rows
                 jsr     spawn
-                bcc     .done
                 rts
-.do_move:       dec     piece_y
+.move:          dec     piece_y
                 jsr     clear_piece
                 inc     piece_y
                 jsr     draw_piece
 .done           rts
 
 ;============================================================
-;
+; Rotate the piece
 ;============================================================
-rotate:         jsr     do_rotate
+rotate:         jsr     rotate_right
                 jsr     verify_piece
                 bcs     .no_rotate
-                jsr     undo_rotate
+                jsr     rotate_left
                 jsr     clear_piece
-                jsr     do_rotate
+                jsr     rotate_right
                 jsr     draw_piece
                 bra     .done
-.no_rotate:     jsr     undo_rotate
+.no_rotate:     jsr     rotate_left
 .done:          rts
 
 ;============================================================
 ;
 ;============================================================
-do_rotate:      clc
+rotate_right:   clc
                 lda     rotation
                 adc     #2
                 and     #%00000111      ; rollover at 8
@@ -284,9 +283,9 @@ do_rotate:      clc
 ;============================================================
 ;
 ;============================================================
-undo_rotate:    jsr     do_rotate
-                jsr     do_rotate
-                jsr     do_rotate
+rotate_left:    jsr     rotate_right
+                jsr     rotate_right
+                jsr     rotate_right
                 rts
 
 ;===========================================================================
