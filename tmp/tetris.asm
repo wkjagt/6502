@@ -154,9 +154,12 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
                 bpl     .done
                 jsr     JMP_GETC
                 bbs3    flags, .exit_q  ; only allow unpause and exit when paused
-                cmp     #" "            ; space to rotate
+                cmp     #"x"            ; x to rotate right
+                bne     .rotate_left_q
+                jsr     try_rotate_right
+.rotate_left_q: cmp     #"z"            ; z to rotate left
                 bne     .left_q
-                jsr     rotate
+                jsr     try_rotate_left
 .left_q:        cmp     #LEFT_ARROW
                 bne     .right_q
                 jsr     move_left
@@ -259,7 +262,7 @@ move_down:      inc     piece_y
 ;============================================================
 ; Rotate the piece
 ;============================================================
-rotate:         jsr     rotate_right
+try_rotate_right:jsr     rotate_right
                 jsr     verify_piece
                 bcs     .no_rotate
                 jsr     rotate_left
@@ -268,6 +271,20 @@ rotate:         jsr     rotate_right
                 jsr     draw_piece
                 bra     .done
 .no_rotate:     jsr     rotate_left
+.done:          rts
+
+;============================================================
+;
+;============================================================
+try_rotate_left:jsr     rotate_left
+                jsr     verify_piece
+                bcs     .no_rotate
+                jsr     rotate_right
+                jsr     clear_piece
+                jsr     rotate_left
+                jsr     draw_piece
+                bra     .done
+.no_rotate:     jsr     rotate_right
 .done:          rts
 
 ;============================================================
