@@ -41,9 +41,8 @@ PAUSE           =       8
 ; - Spawn a new piece at the top
 ; - Start the main game loop
 ;============================================================
-init_game:      jsr     JMP_CURSOR_OFF
-                lda     #12             ; clear screen
-                jsr     JMP_PUTC
+init_game:      jsr     JMP_INIT_SCREEN ; clears the screen
+                jsr     JMP_CURSOR_OFF
                 jsr     draw_walls
                 jsr     draw_bottom
                 stz     flags
@@ -52,14 +51,8 @@ init_game:      jsr     JMP_CURSOR_OFF
                 stz     level
                 stz     cleared_rows
 
-                lda     #$0e
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
-                lda     #$0f
-                jsr     JMP_PUTC
-                lda     #24
-                jsr     JMP_PUTC
+                ldx     #24
+                jsr     set_info_cursor
                 jsr     JMP_PRINT_STRING
                 .byte   "SCORE: 0000 LEVEL: 000 ROWS: 000",0
 
@@ -72,8 +65,8 @@ init_game:      jsr     JMP_CURSOR_OFF
 ;============================================================
 main_loop:      jsr     handle_input
                 bbs3    flags, main_loop; game is paused
-                jsr     timed_down
-                bcs     .exit           ; game over when timed down wasn't able to spawn
+                jsr     timed_step
+                bbs2    flags, .exit    ; game over when timed down wasn't able to spawn
                 bbr0    flags, main_loop; bit 0: exit
 .exit:          ldx     #24             ; scroll up 24 rows to keep score etc
 .scroll:        lda     #$14
@@ -82,20 +75,32 @@ main_loop:      jsr     handle_input
                 bne     .scroll
                 lda     #$0f
                 jsr     JMP_PUTC
-                lda     #2
+                lda     #2              ; cursor y: 2
                 jsr     JMP_PUTC
                 jsr     JMP_CURSOR_ON
                 rts
 
 ;============================================================
+; Check the timer, and advance the game at the current speed
+;============================================================
+timed_step:     bbs1    flags, .step    ; skip delay if drop flag set
+                lda     ticks
+                sbc     last_ticks
+                ldx     level
+                cmp     level_delays,x
+                bcc     .done
+.step:          lda     ticks
+                sta     last_ticks
+                jsr     move_down       ; the main timed action: move the current piece down
+.done:          rts
+
+;============================================================
 ; Clear enough bytes to hold the grid data
 ;============================================================
-clear_grid:     ldx     #0
-.loop:          stz     rows,x
-                cpx     #230
-                beq     .done
-                inx
-                bra     .loop
+clear_grid:     ldx     #231
+.loop:          stz     rows-1,x
+                dex
+                bne     .loop
 .done:          rts
 
 ;============================================================
@@ -103,16 +108,17 @@ clear_grid:     ldx     #0
 ; work. This happens when the grid has piled up so far,
 ; there's no space for the new piece to be drawn.
 ;============================================================
-spawn:          lda     #5
+spawn:          lda     #3
                 sta     piece_x
-                lda     #0
+                lda     #-1
                 sta     piece_y
                 jsr     select_piece
                 jsr     verify_piece
                 bcc     .draw
-                rts                     ; unable to spawn: end of game
+                lda     flags
+                ora     #GAME_OVER
+                sta     flags
 .draw:          jsr     draw_piece
-                clc
                 rts
 
 ;============================================================
@@ -122,7 +128,7 @@ spawn:          lda     #5
 ;============================================================
 select_piece:   ldy     ticks
                 ldx     #13
-.loop2:         lda     pieces,x
+.loop:          lda     pieces,x
                 sta     piece+1
                 dex
                 lda     pieces,x
@@ -131,7 +137,8 @@ select_piece:   ldy     ticks
                 bpl     .next
                 ldx     #13
 .next:          dey
-                bne     .loop2
+                bne     .loop
+                stz     rotation
                 rts
 
 ;============================================================
@@ -178,7 +185,7 @@ handle_input:   lda     $6000           ; has key? todo: make nonblocking OS cal
 exit:           pha
                 lda     flags
                 ora     #EXIT
-                and     #~PAUSE
+                and     #~PAUSE         ; unpause so exit is immediate when paused
                 sta     flags
                 pla
                 rts
@@ -249,20 +256,6 @@ move_down:      inc     piece_y
                 inc     piece_y
                 jsr     draw_piece
 .done           rts
-;============================================================
-; move the piece down using the ticks timer and
-; a speed (delay) variable
-;============================================================
-timed_down:     bbs1    flags, .drop    ; skip delay if drop flag set
-                lda     ticks
-                sbc     last_ticks
-                ldx     level
-                cmp     level_delays,x
-                bcc     .done
-.drop:          lda     ticks
-                sta     last_ticks
-                jsr     move_down
-.done:          rts
 
 ;============================================================
 ;
@@ -371,28 +364,28 @@ handle_cell:    jmp     (cell_rtn)
 
 ;===========================================================================
 ; This draws a block by setting pixel_rtn to JMP_DRAW_PIXEL and caling
-; update_block
+; update_cell
 ;===========================================================================
 draw_cell:      pha
                 lda     #<JMP_DRAW_PIXEL
                 sta     pixel_rtn
                 lda     #>JMP_DRAW_PIXEL
                 sta     pixel_rtn+1
-                jsr     update_block
+                jsr     update_cell
                 pla
                 clc                     ; always success
                 rts
 
 ;===========================================================================
 ; This clears a block by setting pixel_rtn to JMP_RMV_PIXEL and caling
-; update_block
+; update_cell
 ;===========================================================================
 erase_cell:     pha
                 lda     #<JMP_RMV_PIXEL
                 sta     pixel_rtn
                 lda     #>JMP_RMV_PIXEL
                 sta     pixel_rtn+1
-                jsr     update_block
+                jsr     update_cell
                 pla
                 clc                     ; always success
                 rts
@@ -473,18 +466,20 @@ cell_index:     clc
 ; These are positions within the grid, not pixels, so this routine
 ; needs to calculate the pixel positions from the grid coordinates.
 ;===========================================================================
-update_block:   pha
+update_cell:    pha
                 phx
                 phy
+                lda     cell_y
+                bmi     .skip
+                asl
+                asl
+                tay
                 lda     cell_x
                 asl
                 asl
                 adc     #60             ; offset 60 because that's where the grid is
                 tax
-                lda     cell_y
-                asl
-                asl
-                tay
+
 
                 jsr     handle_pixel
                 inx
@@ -506,7 +501,7 @@ update_block:   pha
                 jsr     handle_pixel
                 inx
                 jsr     handle_pixel
-                ply
+.skip:          ply
                 plx
                 pla
                 rts
@@ -722,34 +717,34 @@ row_scores:     .byte   $0, $1, $5, $30, $80
 pieces:         .word   piece_l, piece_i, piece_j, piece_o, piece_s
                 .word   piece_t, piece_z
 
-piece_l:        .byte   %00101110, %00000000
-                .byte   %10001000, %11000000
-                .byte   %11101000, %00000000
-                .byte   %11000100, %01000000
-piece_i:        .byte   %10001000, %10001000
-                .byte   %11110000, %00000000
-                .byte   %10001000, %10001000
-                .byte   %11110000, %00000000
-piece_j:        .byte   %10001110, %00000000
-                .byte   %11001000, %10000000
-                .byte   %11100010, %00000000
-                .byte   %01000100, %11000000
-piece_o:        .byte   %11001100, %00000000
-                .byte   %11001100, %00000000
-                .byte   %11001100, %00000000
-                .byte   %11001100, %00000000
-piece_s:        .byte   %01101100, %00000000
-                .byte   %10001100, %01000000
-                .byte   %01101100, %00000000
-                .byte   %10001100, %01000000
-piece_t:        .byte   %01001110, %00000000
-                .byte   %10001100, %10000000
-                .byte   %11100100, %00000000
-                .byte   %01001100, %01000000
-piece_z:        .byte   %11000110, %00000000
-                .byte   %01001100, %10000000
-                .byte   %11000110, %00000000
-                .byte   %01001100, %10000000
+piece_l:        .byte   $44, $60
+                .byte   $0e, $80
+                .byte   $c4, $40
+                .byte   $2e, $00
+piece_i:        .byte   $44, $44
+                .byte   $f0, $00
+                .byte   $22, $22
+                .byte   $00, $f0
+piece_j:        .byte   $22, $60
+                .byte   $47, $00
+                .byte   $32, $20
+                .byte   $07, $10
+piece_o:        .byte   $06, $60
+                .byte   $0c, $c0
+                .byte   $cc, $00
+                .byte   $66, $00
+piece_s:        .byte   $03, $60
+                .byte   $46, $20
+                .byte   $36, $00
+                .byte   $23, $10
+piece_t:        .byte   $0e, $40
+                .byte   $4c, $40
+                .byte   $4e, $00
+                .byte   $46, $40
+piece_z:        .byte   $0c, $60
+                .byte   $4c, $80
+                .byte   $c6, $00
+                .byte   $26, $40
 
 row_indeces:    .byte   0,   10,  20,  30,  40
                 .byte   50,  60,  70,  80,  90
