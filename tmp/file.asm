@@ -24,12 +24,15 @@ ZP_I2C_DATA             = $50
                 .include "libi2c.asm"
 
                 ; read 5 pages from eeprom, starting at page 5 and save to RAM starting at page 10
-start:          ldx     #5
+start:          jsr     i2c_init        ; todo udpate init code in ROM
                 lda     #10             ; start at page 10
                 sta     stor_ram_addr_h
+
                 lda     #5
                 sta     stor_eeprom_addr_h ; start reading from page 5 in EEPROM
-                jsr     read_pages
+
+                jsr     read_page
+                jsr     i2c_init
                 rts
 
 
@@ -176,6 +179,7 @@ read_sequence:  phx
                 lda     stor_eeprom_i2c_addr
                 clc                     ; write
                 jsr     send_i2c_addr
+                
                 jsr     set_address
                 jsr     _start_cond
 
@@ -205,9 +209,11 @@ read_sequence:  phx
                 ; ack the reception of the byte
                 jsr     _data_out       ; set the data line as output so we can ackknowledge
 
-                lda     I2C_PORT
-                and     #(I2C_DATABIT^$FF) ; set data line low to ack
-                sta     I2C_PORT
+                ; lda     I2C_PORT
+                ; and     #(I2C_DATABIT^$FF) ; set data line low to ack
+                ; sta     I2C_PORT
+                lda     #I2C_DATABIT
+                tsb     I2C_DDR
 
                 jsr     _clock_high     ; strobe it into the EEPROM
                 jsr     _clock_low
@@ -244,26 +250,60 @@ set_address:    lda     stor_eeprom_addr_h
 ;=================================================================================
 _start_cond:    
                 ; 1. DEACTIVATE BUS
-                lda     I2C_PORT
-                ora     #(I2C_DATABIT | I2C_CLOCKBIT)      ; clock and data high
-                sta     I2C_PORT
-                ; 2. START CONDITION
-                and     #(I2C_DATABIT^$FF) ; clock stays high, data goes low
-                sta     I2C_PORT
-                and     #(I2C_CLOCKBIT^$FF); then pull clock low
-                sta     I2C_PORT
+                ; lda     I2C_PORT
+                ; ora     #(I2C_DATABIT | I2C_CLOCKBIT)      ; clock and data high
+                ; sta     I2C_PORT
+
+                ; clock and data high
+                lda     #(I2C_DATABIT | I2C_CLOCKBIT)
+                trb     I2C_DDR
+                nop
+                nop
+                nop
+                nop
+                nop
+                nop
+                ; data low
+                lda     #I2C_DATABIT
+                tsb     I2C_DDR
+                nop
+                nop
+                nop
+                nop
+                nop
+
+                ; clock low
+                lda     #I2C_CLOCKBIT
+                tsb     I2C_DDR
+                nop
+                nop
+                nop
+                nop
+                nop
+
+                ; lda     #(I2C_DATABIT^$FF) ; clock stays high, data goes low
+                ; sta     I2C_PORT
+                ; and     #(I2C_CLOCKBIT^$FF); then pull clock low
+                ; sta     I2C_PORT
                 rts
 
 ;=================================================================================
 ; Send the stop condition to the EEPROM
-_stop_cond:     lda     I2C_PORT
-                and     #(I2C_DATABIT^$FF) ; data low
-                sta     I2C_PORT
+_stop_cond:     ;lda     I2C_PORT
+                ; and     #(I2C_DATABIT^$FF) ; data low
+                ; sta     I2C_PORT
+                ; jsr     _clock_high     ; clock high
+                ; lda     I2C_PORT           ; TODO: can I get rid of this?
+                ; ora     #I2C_DATABIT       ; data high
+                ; sta     I2C_PORT
+                ; rts
+                lda     #I2C_DATABIT
+                tsb     I2C_DDR
                 jsr     _clock_high     ; clock high
-                lda     I2C_PORT           ; TODO: can I get rid of this?
-                ora     #I2C_DATABIT       ; data high
-                sta     I2C_PORT
+                lda     #I2C_DATABIT
+                trb     I2C_DDR
                 rts
+
 
 ;=================================================================================
 ; Set the data line as input
@@ -288,18 +328,16 @@ transmit_byte:  pha
                 sta     stor_byte_out
                 ldy     #8
 _transmit_loop: ; Set next byte on bus while clock is still low
-                asl     stor_byte_out        ; shift next bit into carry
-                lda     I2C_PORT
-                bcc     _send_zero
-
-                ; send one
-                ora     #I2C_DATABIT
+                asl     stor_byte_out           ; shift next bit into carry
+                lda     I2C_DDR                 ; load current data direction
+                bcc     _send_zero              ; if carry clear: send 9, otherwise send 1
+                and     #(I2C_DATABIT^$FF)      ; set databit to 0 in DDR (input: float up)
                 jmp     _continue
-_send_zero:     and     #(I2C_DATABIT^$FF)
-_continue:      and     #(I2C_CLOCKBIT^$FF); make sure clock is low when placing the bit on the bus
-                sta     I2C_PORT
+_send_zero:     ora     #I2C_DATABIT            ; set databit to 1 in DDR (output: 0)
+_continue:      ora     #I2C_CLOCKBIT           ; make sure clock is low when placing the bit on the bus
+                sta     I2C_DDR                 ; store new value in DDR
 
-                jsr     _clock_high     ; toggle clock to strobe it into the eeprom
+                jsr     _clock_high             ; toggle clock to strobe it into the eeprom
                 jsr     _clock_low
 
                 dey
@@ -309,7 +347,8 @@ _continue:      and     #(I2C_CLOCKBIT^$FF); make sure clock is low when placing
                 ; it pulls the data line low to signal that the byte was received
                 jsr     _data_in
                 jsr     _clock_high
-                lsr     I2C_PORT           ; put ack bit in Carry
+                lda     I2C_PORT
+                lsr     a
                 jsr     _clock_low
                 jsr     _data_out
                 ply
@@ -317,16 +356,22 @@ _continue:      and     #(I2C_CLOCKBIT^$FF); make sure clock is low when placing
                 rts
 ;=================================================================================
 ; Toggle clock high
-_clock_high:    lda     I2C_PORT
-                ora     #I2C_CLOCKBIT      ; clock high
-                sta     I2C_PORT
+_clock_high:    ; lda     I2C_PORT
+                ; ora     #I2C_CLOCKBIT      ; clock high
+                ; sta     I2C_PORT
+                ; rts
+                lda     #I2C_CLOCKBIT
+                trb     I2C_DDR
                 rts
 
 ;=================================================================================
 ; Toggle clock low
-_clock_low:     lda     I2C_PORT       
-                and     #(I2C_CLOCKBIT^$FF); clock low
-                sta     I2C_PORT
+_clock_low:     ; lda     I2C_PORT       
+                ; and     #(I2C_CLOCKBIT^$FF); clock low
+                ; sta     I2C_PORT
+                ; rts
+                lda     #I2C_CLOCKBIT
+                tsb     I2C_DDR
                 rts
 
 
