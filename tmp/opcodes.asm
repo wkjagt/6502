@@ -62,10 +62,10 @@ MN_PHY = 56
 MN_PHX = 57
 MN_BRK = 58
 MN_PLA = 59
-MN_INC = 61
-MN_NOP = 62
-MN_BRA = 63
-MN_ORA = 64
+MN_INC = 60
+MN_NOP = 61
+MN_BRA = 62
+MN_ORA = 63
 
 MODE_IAX  = 0 * 2
 MODE_IZP  = 1 * 2
@@ -98,7 +98,6 @@ MODE_IMPL = 13 * 2
                 .endm
 
 
-search          =       $40             ; 2 bytes
 mnemonic        =       $42
 addr_mode       =       $43
 code_pointer    =       $44             ; 2 bytes
@@ -126,8 +125,9 @@ print_line:     phx
                 jsr     JMP_PRINT_HEX
                 lda     #":"
                 jsr     JMP_PUTC
-                jsr     JMP_PRINT_STRING
-                .byte   "          ",0
+                lda     #" "
+                jsr     JMP_PUTC
+
                 jsr     print_instuction
                 inc16   code_pointer
                 lda     #CR
@@ -141,52 +141,34 @@ print_line:     phx
 ; print the instruction stored at code_pointer
 ;==============================================================
 print_instuction:
-                lda     (code_pointer)
-                jsr     search_op
-                ldy     #1
-                lda     (search),y      ; skip first byte of entry (opcode)
+                lda     (code_pointer)  ; load the next opcode into A
+                asl     a
+                tay
+                bcs     .second_half
+                lda     opcodes,y
                 sta     mnemonic
-                iny
-                lda     (search),y
+                lda     opcodes+1,y
                 sta     addr_mode
-                jsr     print_mn
+                bra     .next
+.second_half:   lda     opcodes+$100,y
+                sta     mnemonic
+                lda     opcodes+$101,y
+                sta     addr_mode
+.next           jsr     print_mn
                 lda     #" "
                 jsr     JMP_PUTC
                 jsr     print_args
                 rts
 
-
-search_op:      ldx     #<opcodes
-                stx     search
-                ldx     #>opcodes
-                stx     search+1
-.next           ldy     #0
-                cmp     (search),y
-                beq     .found
-                inc16   search
-                inc16   search
-                inc16   search
-                bra     .next
-.found:         rts
-
-print_mn:       ldx     #<mnemonics2
-                stx     search
-                ldx     #>mnemonics2
-                stx     search+1
-                lda     mnemonic
-.next           ldy     #0
-                cmp     (search),y
-                beq     .found
-                inc16   search
-                inc16   search
-                inc16   search
-                inc16   search
-                bra     .next
-.found:         inc16   search
-.nextchar:      lda     (search),y
+print_mn:       lda     mnemonic        ; mutiply by 4 to get mnemonic index
+                asl
+                asl
+                tay
+                ldx     #3
+.nextchar:      lda     mnemonics2,y
                 jsr     JMP_PUTC
                 iny
-                cpy     #3
+                dex
                 bne     .nextchar
                 rts
 
@@ -226,250 +208,327 @@ print2bytearg:  phy
                 ply
                 rts
 
-opcodes:        .byte $00, MN_BRK, MODE_IMPL
-                .byte $01, MN_ORA, MODE_IZX
-                .byte $04, MN_TSB, MODE_ZP
-                .byte $05, MN_ORA, MODE_ZP
-                .byte $06, MN_ASL, MODE_ZP
-                .byte $08, MN_PHP, MODE_IMPL
-                .byte $09, MN_ORA, MODE_IMM
-                .byte $0a, MN_ASL, MODE_IMPL
-                .byte $0c, MN_TSB, MODE_ABS
-                .byte $0d, MN_ORA, MODE_ABS
-                .byte $0e, MN_ASL, MODE_ABS
-                .byte $10, MN_BPL, MODE_REL
-                .byte $11, MN_ORA, MODE_IZY
-                .byte $12, MN_ORA, MODE_IZP
-                .byte $14, MN_TRB, MODE_ZP
-                .byte $15, MN_ORA, MODE_ZPX
-                .byte $16, MN_ASL, MODE_ZPX
-                .byte $18, MN_CLC, MODE_IMPL
-                .byte $19, MN_ORA, MODE_ABY
-                .byte $1a, MN_INC, MODE_IMPL
-                .byte $1c, MN_TRB, MODE_ABS
-                .byte $1d, MN_ORA, MODE_ABX
-                .byte $1e, MN_ASL, MODE_ABX
-                .byte $20, MN_JSR, MODE_ABS
-                .byte $21, MN_AND, MODE_IZX
-                .byte $24, MN_BIT, MODE_ZP
-                .byte $25, MN_AND, MODE_ZP
-                .byte $26, MN_ROL, MODE_ZP
-                .byte $28, MN_PLP, MODE_IMPL
-                .byte $29, MN_AND, MODE_IMM
-                .byte $2a, MN_ROL, MODE_IMPL
-                .byte $2c, MN_BIT, MODE_ABS
-                .byte $2d, MN_AND, MODE_ABS
-                .byte $2e, MN_ROL, MODE_ABS
-                .byte $30, MN_BMI, MODE_REL
-                .byte $31, MN_AND, MODE_IZY
-                .byte $32, MN_AND, MODE_IZP
-                .byte $34, MN_BIT, MODE_ZPX
-                .byte $35, MN_AND, MODE_ZPX
-                .byte $36, MN_ROL, MODE_ZPX
-                .byte $38, MN_SEC, MODE_IMPL
-                .byte $39, MN_AND, MODE_ABY
-                .byte $3a, MN_DEC, MODE_IMPL
-                .byte $3c, MN_BIT, MODE_ABX
-                .byte $3d, MN_AND, MODE_ABX
-                .byte $3e, MN_ROL, MODE_ABX
-                .byte $40, MN_RTI, MODE_IMPL
-                .byte $41, MN_EOR, MODE_IZX
-                .byte $45, MN_EOR, MODE_ZP
-                .byte $46, MN_LSR, MODE_ZP
-                .byte $48, MN_PHA, MODE_IMPL
-                .byte $49, MN_EOR, MODE_IMM
-                .byte $4a, MN_LSR, MODE_IMPL
-                .byte $4c, MN_JMP, MODE_ABS
-                .byte $4d, MN_EOR, MODE_ABS
-                .byte $4e, MN_LSR, MODE_ABS
-                .byte $50, MN_BVC, MODE_REL
-                .byte $51, MN_EOR, MODE_IZY
-                .byte $52, MN_EOR, MODE_IZP
-                .byte $55, MN_EOR, MODE_ZPX
-                .byte $56, MN_LSR, MODE_ZPX
-                .byte $58, MN_CLI, MODE_IMPL
-                .byte $59, MN_EOR, MODE_ABY
-                .byte $5a, MN_PHY, MODE_IMPL
-                .byte $5d, MN_EOR, MODE_ABX
-                .byte $5e, MN_LSR, MODE_ABX
-                .byte $60, MN_RTS, MODE_IMPL
-                .byte $61, MN_ADC, MODE_IZX
-                .byte $64, MN_STZ, MODE_ZP
-                .byte $65, MN_ADC, MODE_ZP
-                .byte $66, MN_ROR, MODE_ZP
-                .byte $68, MN_PLA, MODE_IMPL
-                .byte $69, MN_ADC, MODE_IMM
-                .byte $6a, MN_ROR, MODE_IMPL
-                .byte $6c, MN_JMP, MODE_IND
-                .byte $6d, MN_ADC, MODE_ABS
-                .byte $6e, MN_ROR, MODE_ABS
-                .byte $70, MN_BVS, MODE_REL
-                .byte $71, MN_ADC, MODE_IZY
-                .byte $72, MN_ADC, MODE_IZP
-                .byte $74, MN_STZ, MODE_ZPX
-                .byte $75, MN_ADC, MODE_ZPX
-                .byte $76, MN_ROR, MODE_ZPX
-                .byte $78, MN_SEI, MODE_IMPL
-                .byte $79, MN_ADC, MODE_ABY
-                .byte $7a, MN_PLY, MODE_IMPL
-                .byte $7c, MN_JMP, MODE_IAX
-                .byte $7d, MN_ADC, MODE_ABX
-                .byte $7e, MN_ROR, MODE_ABX
-                .byte $80, MN_BRA, MODE_REL
-                .byte $81, MN_STA, MODE_IZX
-                .byte $84, MN_STY, MODE_ZP
-                .byte $85, MN_STA, MODE_ZP
-                .byte $86, MN_STX, MODE_ZP
-                .byte $88, MN_DEY, MODE_IMPL
-                .byte $89, MN_BIT, MODE_IMM
-                .byte $8a, MN_TXA, MODE_IMPL
-                .byte $8c, MN_STY, MODE_ABS
-                .byte $8d, MN_STA, MODE_ABS
-                .byte $8e, MN_STX, MODE_ABS
-                .byte $90, MN_BCC, MODE_REL
-                .byte $91, MN_STA, MODE_IZY
-                .byte $92, MN_STA, MODE_IZP
-                .byte $94, MN_STY, MODE_ZPX
-                .byte $95, MN_STA, MODE_ZPX
-                .byte $96, MN_STX, MODE_ZPY
-                .byte $98, MN_TYA, MODE_IMPL
-                .byte $99, MN_STA, MODE_ABY
-                .byte $9a, MN_TXS, MODE_IMPL
-                .byte $9c, MN_STZ, MODE_ABS
-                .byte $9d, MN_STA, MODE_ABX
-                .byte $9e, MN_STZ, MODE_ABX
-                .byte $a0, MN_LDY, MODE_IMM
-                .byte $a1, MN_LDA, MODE_IZX
-                .byte $a2, MN_LDX, MODE_IMM
-                .byte $a4, MN_LDY, MODE_ZP
-                .byte $a5, MN_LDA, MODE_ZP
-                .byte $a6, MN_LDX, MODE_ZP
-                .byte $a8, MN_TAY, MODE_IMPL
-                .byte $a9, MN_LDA, MODE_IMM
-                .byte $aa, MN_TAX, MODE_IMPL
-                .byte $ac, MN_LDY, MODE_ABS
-                .byte $ad, MN_LDA, MODE_ABS
-                .byte $ae, MN_LDX, MODE_ABS
-                .byte $b0, MN_BCS, MODE_REL
-                .byte $b1, MN_LDA, MODE_IZY
-                .byte $b2, MN_LDA, MODE_IZP
-                .byte $b4, MN_LDY, MODE_ZPX
-                .byte $b5, MN_LDA, MODE_ZPX
-                .byte $b6, MN_LDX, MODE_ZPY
-                .byte $b8, MN_CLV, MODE_IMPL
-                .byte $b9, MN_LDA, MODE_ABY
-                .byte $ba, MN_TSX, MODE_IMPL
-                .byte $bc, MN_LDY, MODE_ABX
-                .byte $bd, MN_LDA, MODE_ABX
-                .byte $be, MN_LDX, MODE_ABY
-                .byte $c0, MN_CPY, MODE_IMM
-                .byte $c1, MN_CMP, MODE_IZX
-                .byte $c4, MN_CPY, MODE_ZP
-                .byte $c5, MN_CMP, MODE_ZP
-                .byte $c6, MN_DEC, MODE_ZP
-                .byte $c8, MN_INY, MODE_IMPL
-                .byte $c9, MN_CMP, MODE_IMM
-                .byte $ca, MN_DEX, MODE_IMPL
-                .byte $cc, MN_CPY, MODE_ABS
-                .byte $cd, MN_CMP, MODE_ABS
-                .byte $ce, MN_DEC, MODE_ABS
-                .byte $d0, MN_BNE, MODE_REL
-                .byte $d1, MN_CMP, MODE_IZY
-                .byte $d2, MN_CMP, MODE_IZP
-                .byte $d5, MN_CMP, MODE_ZPX
-                .byte $d6, MN_DEC, MODE_ZPX
-                .byte $d8, MN_CLD, MODE_IMPL
-                .byte $d9, MN_CMP, MODE_ABY
-                .byte $da, MN_PHX, MODE_IMPL
-                .byte $dd, MN_CMP, MODE_ABX
-                .byte $de, MN_DEC, MODE_ABX
-                .byte $e0, MN_CPX, MODE_IMM
-                .byte $e1, MN_SBC, MODE_IZX
-                .byte $e4, MN_CPX, MODE_ZP
-                .byte $e5, MN_SBC, MODE_ZP
-                .byte $e6, MN_INC, MODE_ZP
-                .byte $e8, MN_INX, MODE_IMPL
-                .byte $e9, MN_SBC, MODE_IMM
-                .byte $ea, MN_NOP, MODE_IMPL
-                .byte $ec, MN_CPX, MODE_ABS
-                .byte $ed, MN_SBC, MODE_ABS
-                .byte $ee, MN_INC, MODE_ABS
-                .byte $f0, MN_BEQ, MODE_REL
-                .byte $f1, MN_SBC, MODE_IZY
-                .byte $f2, MN_SBC, MODE_IZP
-                .byte $f5, MN_SBC, MODE_ZPX
-                .byte $f6, MN_INC, MODE_ZPX
-                .byte $f8, MN_SED, MODE_IMPL
-                .byte $f9, MN_SBC, MODE_ABY
-                .byte $fa, MN_PLX, MODE_IMPL
-                .byte $fd, MN_SBC, MODE_ABX
-                .byte $fe, MN_INC, MODE_ABX
-                .byte 0
+opcodes:        .byte MN_BRK, MODE_IMPL    ;$00
+                .byte MN_ORA, MODE_IZX     ;$01
+                .byte 0, 0                 ;$02
+                .byte 0, 0                 ;$03
+                .byte MN_TSB, MODE_ZP      ;$04
+                .byte MN_ORA, MODE_ZP      ;$05
+                .byte MN_ASL, MODE_ZP      ;$06
+                .byte 0, 0                 ;$07
+                .byte MN_PHP, MODE_IMPL    ;$08
+                .byte MN_ORA, MODE_IMM     ;$09
+                .byte MN_ASL, MODE_IMPL    ;$0a
+                .byte 0, 0                 ;$0b
+                .byte MN_TSB, MODE_ABS     ;$0c
+                .byte MN_ORA, MODE_ABS     ;$0d
+                .byte MN_ASL, MODE_ABS     ;$0e
+                .byte 0, 0                 ;$0f
+                .byte MN_BPL, MODE_REL     ;$10
+                .byte MN_ORA, MODE_IZY     ;$11
+                .byte MN_ORA, MODE_IZP     ;$12
+                .byte 0, 0                 ;$13
+                .byte MN_TRB, MODE_ZP      ;$14
+                .byte MN_ORA, MODE_ZPX     ;$15
+                .byte MN_ASL, MODE_ZPX     ;$16
+                .byte 0, 0                 ;$17
+                .byte MN_CLC, MODE_IMPL    ;$18
+                .byte MN_ORA, MODE_ABY     ;$19
+                .byte MN_INC, MODE_IMPL    ;$1a
+                .byte 0, 0                 ;$1b
+                .byte MN_TRB, MODE_ABS     ;$1c
+                .byte MN_ORA, MODE_ABX     ;$1d
+                .byte MN_ASL, MODE_ABX     ;$1e
+                .byte 0, 0                 ;$1f
+                .byte MN_JSR, MODE_ABS     ;$20
+                .byte MN_AND, MODE_IZX     ;$21
+                .byte 0, 0                 ;$22
+                .byte 0, 0                 ;$23
+                .byte MN_BIT, MODE_ZP      ;$24
+                .byte MN_AND, MODE_ZP      ;$25
+                .byte MN_ROL, MODE_ZP      ;$26
+                .byte 0, 0                 ;$27
+                .byte MN_PLP, MODE_IMPL    ;$28
+                .byte MN_AND, MODE_IMM     ;$29
+                .byte MN_ROL, MODE_IMPL    ;$2a
+                .byte 0, 0                 ;$2b
+                .byte MN_BIT, MODE_ABS     ;$2c
+                .byte MN_AND, MODE_ABS     ;$2d
+                .byte MN_ROL, MODE_ABS     ;$2e
+                .byte 0, 0                 ;$2f
+                .byte MN_BMI, MODE_REL     ;$30
+                .byte MN_AND, MODE_IZY     ;$31
+                .byte MN_AND, MODE_IZP     ;$32
+                .byte 0, 0                 ;$33
+                .byte MN_BIT, MODE_ZPX     ;$34
+                .byte MN_AND, MODE_ZPX     ;$35
+                .byte MN_ROL, MODE_ZPX     ;$36
+                .byte 0, 0                 ;$37
+                .byte MN_SEC, MODE_IMPL    ;$38
+                .byte MN_AND, MODE_ABY     ;$39
+                .byte MN_DEC, MODE_IMPL    ;$3a
+                .byte 0, 0                 ;$3b
+                .byte MN_BIT, MODE_ABX     ;$3c
+                .byte MN_AND, MODE_ABX     ;$3d
+                .byte MN_ROL, MODE_ABX     ;$3e
+                .byte 0, 0                 ;$3f
+                .byte MN_RTI, MODE_IMPL    ;$40
+                .byte MN_EOR, MODE_IZX     ;$41
+                .byte 0, 0                 ;$42
+                .byte 0, 0                 ;$43
+                .byte 0, 0                 ;$44
+                .byte MN_EOR, MODE_ZP      ;$45
+                .byte MN_LSR, MODE_ZP      ;$46
+                .byte 0, 0                 ;$47
+                .byte MN_PHA, MODE_IMPL    ;$48
+                .byte MN_EOR, MODE_IMM     ;$49
+                .byte MN_LSR, MODE_IMPL    ;$4a
+                .byte 0, 0                 ;$4b
+                .byte MN_JMP, MODE_ABS     ;$4c
+                .byte MN_EOR, MODE_ABS     ;$4d
+                .byte MN_LSR, MODE_ABS     ;$4e
+                .byte 0, 0                 ;$4f
+                .byte MN_BVC, MODE_REL     ;$50
+                .byte MN_EOR, MODE_IZY     ;$51
+                .byte MN_EOR, MODE_IZP     ;$52
+                .byte 0, 0                 ;$53
+                .byte 0, 0                 ;$54
+                .byte MN_EOR, MODE_ZPX     ;$55
+                .byte MN_LSR, MODE_ZPX     ;$56
+                .byte 0, 0                 ;$57
+                .byte MN_CLI, MODE_IMPL    ;$58
+                .byte MN_EOR, MODE_ABY     ;$59
+                .byte MN_PHY, MODE_IMPL    ;$5a
+                .byte 0, 0                 ;$5b
+                .byte 0, 0                 ;$5c
+                .byte MN_EOR, MODE_ABX     ;$5d
+                .byte MN_LSR, MODE_ABX     ;$5e
+                .byte 0, 0                 ;$5f
+                .byte MN_RTS, MODE_IMPL    ;$60
+                .byte MN_ADC, MODE_IZX     ;$61
+                .byte 0, 0                 ;$62
+                .byte 0, 0                 ;$63
+                .byte MN_STZ, MODE_ZP      ;$64
+                .byte MN_ADC, MODE_ZP      ;$65
+                .byte MN_ROR, MODE_ZP      ;$66
+                .byte 0, 0                 ;$67
+                .byte MN_PLA, MODE_IMPL    ;$68
+                .byte MN_ADC, MODE_IMM     ;$69
+                .byte MN_ROR, MODE_IMPL    ;$6a
+                .byte MN_ROR, MODE_IMPL    ;$6b
+                .byte MN_JMP, MODE_IND     ;$6c
+                .byte MN_ADC, MODE_ABS     ;$6d
+                .byte MN_ROR, MODE_ABS     ;$6e
+                .byte 0, 0                 ;$6f
+                .byte MN_BVS, MODE_REL     ;$70
+                .byte MN_ADC, MODE_IZY     ;$71
+                .byte MN_ADC, MODE_IZP     ;$72
+                .byte 0, 0                 ;$73
+                .byte MN_STZ, MODE_ZPX     ;$74
+                .byte MN_ADC, MODE_ZPX     ;$75
+                .byte MN_ROR, MODE_ZPX     ;$76
+                .byte 0, 0                 ;$77
+                .byte MN_SEI, MODE_IMPL    ;$78
+                .byte MN_ADC, MODE_ABY     ;$79
+                .byte MN_PLY, MODE_IMPL    ;$7a
+                .byte 0, 0                 ;$7b
+                .byte MN_JMP, MODE_IAX     ;$7c
+                .byte MN_ADC, MODE_ABX     ;$7d
+                .byte MN_ROR, MODE_ABX     ;$7e
+                .byte 0, 0                 ;$7f
+                .byte MN_BRA, MODE_REL     ;$80
+                .byte MN_STA, MODE_IZX     ;$81
+                .byte 0, 0                 ;$82
+                .byte 0, 0                 ;$83
+                .byte MN_STY, MODE_ZP      ;$84
+                .byte MN_STA, MODE_ZP      ;$85
+                .byte MN_STX, MODE_ZP      ;$86
+                .byte 0, 0                 ;$87
+                .byte MN_DEY, MODE_IMPL    ;$88
+                .byte MN_BIT, MODE_IMM     ;$89
+                .byte MN_TXA, MODE_IMPL    ;$8a
+                .byte 0, 0                 ;$8b
+                .byte MN_STY, MODE_ABS     ;$8c
+                .byte MN_STA, MODE_ABS     ;$8d
+                .byte MN_STX, MODE_ABS     ;$8e
+                .byte 0, 0                 ;$8f
+                .byte MN_BCC, MODE_REL     ;$90
+                .byte MN_STA, MODE_IZY     ;$91
+                .byte MN_STA, MODE_IZP     ;$92
+                .byte 0, 0                 ;$93
+                .byte MN_STY, MODE_ZPX     ;$94
+                .byte MN_STA, MODE_ZPX     ;$95
+                .byte MN_STX, MODE_ZPY     ;$96
+                .byte 0, 0                 ;$97
+                .byte MN_TYA, MODE_IMPL    ;$98
+                .byte MN_STA, MODE_ABY     ;$99
+                .byte MN_TXS, MODE_IMPL    ;$9a
+                .byte 0, 0                 ;$9b
+                .byte MN_STZ, MODE_ABS     ;$9c
+                .byte MN_STA, MODE_ABX     ;$9d
+                .byte MN_STZ, MODE_ABX     ;$9e
+                .byte 0, 0                 ;$9f
+                .byte MN_LDY, MODE_IMM     ;$a0
+                .byte MN_LDA, MODE_IZX     ;$a1
+                .byte MN_LDX, MODE_IMM     ;$a2
+                .byte 0, 0                 ;$a3
+                .byte MN_LDY, MODE_ZP      ;$a4
+                .byte MN_LDA, MODE_ZP      ;$a5
+                .byte MN_LDX, MODE_ZP      ;$a6
+                .byte 0, 0                 ;$a7
+                .byte MN_TAY, MODE_IMPL    ;$a8
+                .byte MN_LDA, MODE_IMM     ;$a9
+                .byte MN_TAX, MODE_IMPL    ;$aa
+                .byte 0, 0                 ;$ab
+                .byte MN_LDY, MODE_ABS     ;$ac
+                .byte MN_LDA, MODE_ABS     ;$ad
+                .byte MN_LDX, MODE_ABS     ;$ae
+                .byte 0, 0                 ;$af
+                .byte MN_BCS, MODE_REL     ;$b0
+                .byte MN_LDA, MODE_IZY     ;$b1
+                .byte MN_LDA, MODE_IZP     ;$b2
+                .byte 0, 0                 ;$b3
+                .byte MN_LDY, MODE_ZPX     ;$b4
+                .byte MN_LDA, MODE_ZPX     ;$b5
+                .byte MN_LDX, MODE_ZPY     ;$b6
+                .byte 0, 0                 ;$b7
+                .byte MN_CLV, MODE_IMPL    ;$b8
+                .byte MN_LDA, MODE_ABY     ;$b9
+                .byte MN_TSX, MODE_IMPL    ;$ba
+                .byte 0, 0                 ;$bb
+                .byte MN_LDY, MODE_ABX     ;$bc
+                .byte MN_LDA, MODE_ABX     ;$bd
+                .byte MN_LDX, MODE_ABY     ;$be
+                .byte 0, 0                 ;$bf
+                .byte MN_CPY, MODE_IMM     ;$c0
+                .byte MN_CMP, MODE_IZX     ;$c1
+                .byte 0, 0                 ;$c2
+                .byte 0, 0                 ;$c3
+                .byte MN_CPY, MODE_ZP      ;$c4
+                .byte MN_CMP, MODE_ZP      ;$c5
+                .byte MN_DEC, MODE_ZP      ;$c6
+                .byte 0, 0                 ;$c7
+                .byte MN_INY, MODE_IMPL    ;$c8
+                .byte MN_CMP, MODE_IMM     ;$c9
+                .byte MN_DEX, MODE_IMPL    ;$ca
+                .byte 0, 0                 ;$cb
+                .byte MN_CPY, MODE_ABS     ;$cc
+                .byte MN_CMP, MODE_ABS     ;$cd
+                .byte MN_DEC, MODE_ABS     ;$ce
+                .byte 0, 0                 ;$cf
+                .byte MN_BNE, MODE_REL     ;$d0
+                .byte MN_CMP, MODE_IZY     ;$d1
+                .byte MN_CMP, MODE_IZP     ;$d2
+                .byte 0, 0                 ;$d3
+                .byte 0, 0                 ;$d4
+                .byte MN_CMP, MODE_ZPX     ;$d5
+                .byte MN_DEC, MODE_ZPX     ;$d6
+                .byte 0, 0                 ;$d7
+                .byte MN_CLD, MODE_IMPL    ;$d8
+                .byte MN_CMP, MODE_ABY     ;$d9
+                .byte MN_PHX, MODE_IMPL    ;$da
+                .byte 0, 0                 ;$db
+                .byte 0, 0                 ;$dc
+                .byte MN_CMP, MODE_ABX     ;$dd
+                .byte MN_DEC, MODE_ABX     ;$de
+                .byte 0, 0                 ;$df
+                .byte MN_CPX, MODE_IMM     ;$e0
+                .byte MN_SBC, MODE_IZX     ;$e1
+                .byte 0, 0                 ;$e2
+                .byte 0, 0                 ;$e3
+                .byte MN_CPX, MODE_ZP      ;$e4
+                .byte MN_SBC, MODE_ZP      ;$e5
+                .byte MN_INC, MODE_ZP      ;$e6
+                .byte 0, 0                 ;$e7
+                .byte MN_INX, MODE_IMPL    ;$e8
+                .byte MN_SBC, MODE_IMM     ;$e9
+                .byte MN_NOP, MODE_IMPL    ;$ea
+                .byte 0, 0                 ;$eb
+                .byte MN_CPX, MODE_ABS     ;$ec
+                .byte MN_SBC, MODE_ABS     ;$ed
+                .byte MN_INC, MODE_ABS     ;$ee
+                .byte 0, 0                 ;$ef
+                .byte MN_BEQ, MODE_REL     ;$f0
+                .byte MN_SBC, MODE_IZY     ;$f1
+                .byte MN_SBC, MODE_IZP     ;$f2
+                .byte 0, 0                 ;$f3
+                .byte 0, 0                 ;$f4
+                .byte MN_SBC, MODE_ZPX     ;$f5
+                .byte MN_INC, MODE_ZPX     ;$f6
+                .byte 0, 0                 ;$f7
+                .byte MN_SED, MODE_IMPL    ;$f8
+                .byte MN_SBC, MODE_ABY     ;$f9
+                .byte MN_PLX, MODE_IMPL    ;$fa
+                .byte 0, 0                 ;$fb
+                .byte 0, 0                 ;$fc
+                .byte MN_SBC, MODE_ABX     ;$fd
+                .byte MN_INC, MODE_ABX     ;$fe
+                .byte 0, 0                 ;$ff
 
-mnemonics2      .byte   MN_DEX, "DEX"
-                .byte   MN_DEY, "DEY"
-                .byte   MN_TAX, "TAX"
-                .byte   MN_TSB, "TSB"
-                .byte   MN_BPL, "BPL"
-                .byte   MN_BCC, "BCC"
-                .byte   MN_CPX, "CPX"
-                .byte   MN_EOR, "EOR"
-                .byte   MN_TSX, "TSX"
-                .byte   MN_DEC, "DEC"
-                .byte   MN_STA, "STA"
-                .byte   MN_LDA, "LDA"
-                .byte   MN_BEQ, "BEQ"
-                .byte   MN_ROL, "ROL"
-                .byte   MN_STY, "STY"
-                .byte   MN_JMP, "JMP"
-                .byte   MN_BMI, "BMI"
-                .byte   MN_RTI, "RTI"
-                .byte   MN_TAY, "TAY"
-                .byte   MN_TXA, "TXA"
-                .byte   MN_RTS, "RTS"
-                .byte   MN_SED, "SED"
-                .byte   MN_LSR, "LSR"
-                .byte   MN_BNE, "BNE"
-                .byte   MN_JSR, "JSR"
-                .byte   MN_LDY, "LDY"
-                .byte   MN_SEC, "SEC"
-                .byte   MN_BIT, "BIT"
-                .byte   MN_LDX, "LDX"
-                .byte   MN_TXS, "TXS"
-                .byte   MN_SEI, "SEI"
-                .byte   MN_ASL, "ASL"
-                .byte   MN_BVS, "BVS"
-                .byte   MN_CPY, "CPY"
-                .byte   MN_CLI, "CLI"
-                .byte   MN_CLD, "CLD"
-                .byte   MN_TRB, "TRB"
-                .byte   MN_CLC, "CLC"
-                .byte   MN_BCS, "BCS"
-                .byte   MN_ADC, "ADC"
-                .byte   MN_CLV, "CLV"
-                .byte   MN_STX, "STX"
-                .byte   MN_ROR, "ROR"
-                .byte   MN_STZ, "STZ"
-                .byte   MN_AND, "AND"
-                .byte   MN_PHP, "PHP"
-                .byte   MN_INX, "INX"
-                .byte   MN_INY, "INY"
-                .byte   MN_PLP, "PLP"
-                .byte   MN_PHA, "PHA"
-                .byte   MN_CMP, "CMP"
-                .byte   MN_TYA, "TYA"
-                .byte   MN_PLY, "PLY"
-                .byte   MN_PLX, "PLX"
-                .byte   MN_BVC, "BVC"
-                .byte   MN_SBC, "SBC"
-                .byte   MN_PHY, "PHY"
-                .byte   MN_PHX, "PHX"
-                .byte   MN_BRK, "BRK"
-                .byte   MN_PLA, "PLA"
-                .byte   MN_INC, "INC"
-                .byte   MN_NOP, "NOP"
-                .byte   MN_BRA, "BRA"
-                .byte   MN_ORA, "ORA"
+mnemonics2      .byte  "DEX", 0         ; 0
+                .byte  "DEY", 0         ; 4
+                .byte  "TAX", 0         ; 8
+                .byte  "TSB", 0         ; 12
+                .byte  "BPL", 0         ; 16
+                .byte  "BCC", 0         ; 20
+                .byte  "CPX", 0         ; 24
+                .byte  "EOR", 0         ; 28
+                .byte  "TSX", 0         ; 32
+                .byte  "DEC", 0         ; 36
+                .byte  "STA", 0         ; 40
+                .byte  "LDA", 0         ; 44
+                .byte  "BEQ", 0         ; 
+                .byte  "ROL", 0         ; 
+                .byte  "STY", 0
+                .byte  "JMP", 0
+                .byte  "BMI", 0
+                .byte  "RTI", 0
+                .byte  "TAY", 0
+                .byte  "TXA", 0
+                .byte  "RTS", 0
+                .byte  "SED", 0
+                .byte  "LSR", 0
+                .byte  "BNE", 0
+                .byte  "JSR", 0
+                .byte  "LDY", 0
+                .byte  "SEC", 0
+                .byte  "BIT", 0
+                .byte  "LDX", 0
+                .byte  "TXS", 0
+                .byte  "SEI", 0
+                .byte  "ASL", 0
+                .byte  "BVS", 0
+                .byte  "CPY", 0
+                .byte  "CLI", 0
+                .byte  "CLD", 0
+                .byte  "TRB", 0
+                .byte  "CLC", 0
+                .byte  "BCS", 0
+                .byte  "ADC", 0
+                .byte  "CLV", 0
+                .byte  "STX", 0
+                .byte  "ROR", 0
+                .byte  "STZ", 0
+                .byte  "AND", 0
+                .byte  "PHP", 0
+                .byte  "INX", 0
+                .byte  "INY", 0
+                .byte  "PLP", 0
+                .byte  "PHA", 0
+                .byte  "CMP", 0
+                .byte  "TYA", 0
+                .byte  "PLY", 0
+                .byte  "PLX", 0
+                .byte  "BVC", 0
+                .byte  "SBC", 0
+                .byte  "PHY", 0
+                .byte  "PHX", 0
+                .byte  "BRK", 0
+                .byte  "PLA", 0
+                .byte  "INC", 0
+                .byte  "NOP", 0
+                .byte  "BRA", 0
+                .byte  "ORA", 0
 
 
 ; index into formats table / arg size
