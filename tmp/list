@@ -1,0 +1,341 @@
+Sections:
+00: "seg600" (600-671)
+
+
+Source: "disassembler.asm"
+                        	     1: LF                      = $0A
+                        	     2: CR                      = $0D
+                        	     3: 
+                        	     4: 
+                        	     5:                 .macro inc16
+                        	     6:                 inc \1
+                        	     7:                 bne .\@
+                        	     8:                 inc (\1)+1
+                        	     9: .\@:          
+                        	    10:                 .endmacro
+                        	    11: 
+                        	    12:                 .org    $600
+00:0600 0F4205          	    13:                 bbr0    $42, main
+00:0603 AD3412          	    14:                 lda     $1234
+00:0606 EA              	    15:                 nop
+00:0607 EA              	    16:                 nop
+00:0608 A900            	    17: main:           lda     #0
+00:060A 8537            	    18:                 sta     code_pointer
+00:060C A906            	    19:                 lda     #06
+00:060E 8538            	    20:                 sta     code_pointer+1
+00:0610 A214            	    21:                 ldx     #20
+00:0612 201906          	    22: .loop:          jsr     print_line
+00:0615 CA              	    23:                 dex
+00:0616 D0FA            	    24:                 bne     .loop
+00:0618 60              	    25:                 rts 
+                        	    26: 
+                        	    27: ;==============================================================
+                        	    28: ; print one line of disassembled code, starting at the address
+                        	    29: ; stored at code_pointer
+                        	    30: ;==============================================================
+00:0619 DA              	    31: print_line:     phx
+00:061A A538            	    32:                 lda     code_pointer+1
+00:061C 200903          	    33:                 jsr     JMP_PRINT_HEX
+00:061F A537            	    34:                 lda     code_pointer
+00:0621 200903          	    35:                 jsr     JMP_PRINT_HEX
+00:0624 A93A            	    36:                 lda     #":"
+00:0626 200603          	    37:                 jsr     JMP_PUTC
+00:0629 A920            	    38:                 lda     #" "
+00:062B 200603          	    39:                 jsr     JMP_PUTC
+00:062E 208D8E          	    40:                 jsr     find_instruction
+00:0631 A436            	    41:                 ldy     addr_mode
+00:0633 BE5192          	    42:                 ldx     addressing_modes+1,y  ; instruction size
+00:0636 A000            	    43:                 ldy     #0
+00:0638 B137            	    44: .byteloop:      lda     (code_pointer),y
+00:063A 200903          	    45:                 jsr     JMP_PRINT_HEX
+00:063D A920            	    46:                 lda     #" "
+00:063F 200603          	    47:                 jsr     JMP_PUTC
+00:0642 C8              	    48:                 iny
+00:0643 CA              	    49:                 dex
+00:0644 D0F2            	    50:                 bne     .byteloop
+00:0646 C004            	    51: .spaceloop:     cpy     #4
+00:0648 F012            	    52:                 beq     .next
+00:064A A920            	    53:                 lda     #" "
+00:064C 200603          	    54:                 jsr     JMP_PUTC
+00:064F A920            	    55:                 lda     #" "
+00:0651 200603          	    56:                 jsr     JMP_PUTC
+00:0654 A920            	    57:                 lda     #" "
+00:0656 200603          	    58:                 jsr     JMP_PUTC
+00:0659 C8              	    59:                 iny
+00:065A 80EA            	    60:                 bra     .spaceloop
+00:065C 20AA8E          	    61: .next:          jsr     print_instruction
+                        	    62:                 inc16   code_pointer
+00:065F E637            	     1M                 inc code_pointer
+00:0661 D002            	     2M                 bne ._000001
+00:0663 E638            	     3M                 inc (code_pointer)+1
+                        	     4M ._000001:          
+00:0665 A90D            	    63:                 lda     #CR
+00:0667 200603          	    64:                 jsr     JMP_PUTC
+00:066A A90A            	    65:                 lda     #LF
+00:066C 200603          	    66:                 jsr     JMP_PUTC
+00:066F FA              	    67:                 plx
+00:0670 60              	    68:                 rts
+                        	    69: 
+                        	    70: 
+                        	    71:                 .include "../../pager_os/build/pager_os/pager_os.inc"
+
+Source: "../../pager_os/build/pager_os/pager_os.inc"
+                        	     1: BG_BLACK = $01
+                        	     2: BG_CYAN = $07
+                        	     3: BG_DARK_BLUE = $04
+                        	     4: BG_DARK_GREEN = $0C
+                        	     5: BG_DARK_RED = $06
+                        	     6: BG_DARK_YELLOW = $0A
+                        	     7: BG_GRAY = $0E
+                        	     8: BG_LIGHT_BLUE = $05
+                        	     9: BG_LIGHT_GREEN = $03
+                        	    10: BG_LIGHT_RED = $09
+                        	    11: BG_LIGHT_YELLOW = $0B
+                        	    12: BG_MAGENTA = $0D
+                        	    13: BG_MEDIUM_GREEN = $02
+                        	    14: BG_MEDIUM_RED = $08
+                        	    15: BG_TRANSPARENT = $00
+                        	    16: BG_WHITE = $0F
+                        	    17: FG_BLACK = $10
+                        	    18: FG_CYAN = $70
+                        	    19: FG_DARK_BLUE = $40
+                        	    20: FG_DARK_GREEN = $C0
+                        	    21: FG_DARK_RED = $60
+                        	    22: FG_DARK_YELLOW = $A0
+                        	    23: FG_GRAY = $E0
+                        	    24: FG_LIGHT_BLUE = $50
+                        	    25: FG_LIGHT_GREEN = $30
+                        	    26: FG_LIGHT_RED = $90
+                        	    27: FG_LIGHT_YELLOW = $B0
+                        	    28: FG_MAGENTA = $D0
+                        	    29: FG_MEDIUM_GREEN = $20
+                        	    30: FG_MEDIUM_RED = $80
+                        	    31: FG_TRANSPARENT = $00
+                        	    32: FG_WHITE = $F0
+                        	    33: JMP_ADD_TO_DIR = $035D
+                        	    34: JMP_CLEAR_DIR = $034B
+                        	    35: JMP_CLEAR_FAT = $0345
+                        	    36: JMP_CLR_INPUT = $033F
+                        	    37: JMP_COLORS_WRITE = $0378
+                        	    38: JMP_CURSOR_OFF = $0324
+                        	    39: JMP_CURSOR_ON = $0321
+                        	    40: JMP_DRAW_PIXEL = $0327
+                        	    41: JMP_FIND_EMPTY_DIR = $0360
+                        	    42: JMP_FIND_EMPTY_PAGE = $0348
+                        	    43: JMP_FIND_FILE = $036C
+                        	    44: JMP_FORMAT_DIVE = $0357
+                        	    45: JMP_GETC = $030F
+                        	    46: JMP_GET_INPUT = $033C
+                        	    47: JMP_GRAPHICS_ON = $037B
+                        	    48: JMP_INIT_GRAPHIC_SCREEN = $036F
+                        	    49: JMP_INIT_KB = $0312
+                        	    50: JMP_INIT_SCREEN = $0303
+                        	    51: JMP_INIT_SERIAL = $031E
+                        	    52: JMP_INIT_STORAGE = $032D
+                        	    53: JMP_IRQ_HANDLER = $0318
+                        	    54: JMP_LINE_INPUT = $0315
+                        	    55: JMP_LOAD_DIR = $034E
+                        	    56: JMP_LOAD_FAT = $0342
+                        	    57: JMP_NMI_HANDLER = $031B
+                        	    58: JMP_PATTERNS_WRITE = $0375
+                        	    59: JMP_PRINT_HEX = $0309
+                        	    60: JMP_PRINT_STRING = $035A
+                        	    61: JMP_PUTC = $0306
+                        	    62: JMP_RCV = $0300
+                        	    63: JMP_RMV_PIXEL = $032A
+                        	    64: JMP_SAVE_DIR = $0351
+                        	    65: JMP_SHOW_DIR = $0354
+                        	    66: JMP_SPRITE_PATTERNS_WRT = $0372
+                        	    67: JMP_STOR_READ = $0330
+                        	    68: JMP_STOR_READ_PAGE = $0336
+                        	    69: JMP_STOR_WRITE = $0333
+                        	    70: JMP_STOR_WRITE_PAGE = $0339
+                        	    71: JMP_XMODEM_RCV = $030C
+                        	    72: VDP_NAME_TABLE_BASE = $0400
+                        	    73: VDP_REG = $4401
+                        	    74: VDP_REGISTER_SELECT = $80
+                        	    75: VDP_SPRITE_ATTR_TABLE_BASE = $0100
+                        	    76: VDP_VRAM = $4400
+                        	    77: VDP_WRITE_VRAM_BIT = $40
+                        	    78: __ACIA_FILEOFFS__ = $00
+                        	    79: __ACIA_LAST__ = $4800
+                        	    80: __ACIA_SIZE__ = $04
+                        	    81: __ACIA_START__ = $4800
+                        	    82: __CODE_LOAD__ = $8000
+                        	    83: __CODE_RUN__ = $8000
+                        	    84: __CODE_SIZE__ = $12BA
+                        	    85: __DATASTACK_FILEOFFS__ = $8000
+                        	    86: __DATASTACK_LAST__ = $90
+                        	    87: __DATASTACK_SIZE__ = $20
+                        	    88: __DATASTACK_START__ = $90
+                        	    89: __DIR_BUFFER_FILEOFFS__ = $8000
+                        	    90: __DIR_BUFFER_LAST__ = $0500
+                        	    91: __DIR_BUFFER_SIZE__ = $0100
+                        	    92: __DIR_BUFFER_START__ = $0500
+                        	    93: __FAT_BUFFER_FILEOFFS__ = $8000
+                        	    94: __FAT_BUFFER_LAST__ = $0400
+                        	    95: __FAT_BUFFER_SIZE__ = $0100
+                        	    96: __FAT_BUFFER_START__ = $0400
+                        	    97: __INPUTBFR_FILEOFFS__ = $8000
+                        	    98: __INPUTBFR_LAST__ = $B0
+                        	    99: __INPUTBFR_SIZE__ = $50
+                        	   100: __INPUTBFR_START__ = $B0
+                        	   101: __JUMPTABLE_FILEOFFS__ = $8000
+                        	   102: __JUMPTABLE_LAST__ = $037E
+                        	   103: __JUMPTABLE_SIZE__ = $0100
+                        	   104: __JUMPTABLE_START__ = $0300
+                        	   105: __PROGRAM_FILEOFFS__ = $8000
+                        	   106: __PROGRAM_LAST__ = $0600
+                        	   107: __PROGRAM_SIZE__ = $3A00
+                        	   108: __PROGRAM_START__ = $0600
+                        	   109: __RAM_FILEOFFS__ = $8000
+                        	   110: __RAM_LAST__ = $00
+                        	   111: __RAM_SIZE__ = $4000
+                        	   112: __RAM_START__ = $00
+                        	   113: __ROM_FILEOFFS__ = $00
+                        	   114: __ROM_LAST__ = $10000
+                        	   115: __ROM_SIZE__ = $8000
+                        	   116: __ROM_START__ = $8000
+                        	   117: __VARIABLES_FILEOFFS__ = $8000
+                        	   118: __VARIABLES_LAST__ = $00
+                        	   119: __VARIABLES_SIZE__ = $90
+                        	   120: __VARIABLES_START__ = $00
+                        	   121: __VECTORS_LOAD__ = $FFFA
+                        	   122: __VECTORS_RUN__ = $FFFA
+                        	   123: __VECTORS_SIZE__ = $06
+                        	   124: __VIA1_FILEOFFS__ = $00
+                        	   125: __VIA1_LAST__ = $6000
+                        	   126: __VIA1_SIZE__ = $10
+                        	   127: __VIA1_START__ = $6000
+                        	   128: add_to_dir = $87CC
+                        	   129: addr_mode = $36
+                        	   130: addressing_modes = $9250
+                        	   131: clear_dir = $86C8
+                        	   132: clear_fat = $866B
+                        	   133: clear_input = $857F
+                        	   134: code_pointer = $37
+                        	   135: command_vector = $07
+                        	   136: cout = $8A7F
+                        	   137: current_drive = $34
+                        	   138: cursor_down = $832B
+                        	   139: cursor_home = $8313
+                        	   140: cursor_left = $831F
+                        	   141: cursor_off = $82FD
+                        	   142: cursor_on = $82ED
+                        	   143: cursor_right = $8319
+                        	   144: delete = $8E3E
+                        	   145: delete_dir = $8721
+                        	   146: delete_file = $85F2
+                        	   147: dir_page = $15
+                        	   148: draw_pixel = $8331
+                        	   149: dump = $8A86
+                        	   150: dump_page = $8A8C
+                        	   151: edit = $8AF6
+                        	   152: error_code = $17
+                        	   153: find_empty_dir = $86FA
+                        	   154: find_empty_page = $86B2
+                        	   155: find_file = $85B6
+                        	   156: find_instruction = $8E8D
+                        	   157: format = $8E8A
+                        	   158: format_drive = $87E7
+                        	   159: get_input = $852A
+                        	   160: graphics_on = $8815
+                        	   161: hex_to_byte = $8414
+                        	   162: i2c_init = $896E
+                        	   163: i2c_read_byte = $89B7
+                        	   164: i2c_send_ack = $892F
+                        	   165: i2c_send_addr = $89DF
+                        	   166: i2c_send_byte = $8997
+                        	   167: i2c_start = $88F6
+                        	   168: i2c_stop = $8915
+                        	   169: inc_timer = $88DF
+                        	   170: init_keyboard = $8343
+                        	   171: init_screen = $8288
+                        	   172: init_serial = $8447
+                        	   173: init_storage = $846D
+                        	   174: init_timer = $88C1
+                        	   175: input_flags = $14
+                        	   176: inputbuffer_ptr = $12
+                        	   177: lcd_clear = $8A07
+                        	   178: lcd_cout = $8A41
+                        	   179: lcd_home = $8A0F
+                        	   180: lcd_init = $89E3
+                        	   181: lcd_on = $8A17
+                        	   182: lcd_write_4bit = $8A49
+                        	   183: load = $8E1C
+                        	   184: load_dir = $86DF
+                        	   185: load_fat = $868E
+                        	   186: load_file = $8587
+                        	   187: load_page = $0C
+                        	   188: load_page_count = $0B
+                        	   189: print_byte_as_hex = $83DA
+                        	   190: print_file_name = $872B
+                        	   191: print_formatted_byte_as_hex = $83D1
+                        	   192: print_instruction = $8EAA
+                        	   193: print_string = $83F8
+                        	   194: rcv_byte = $8452
+                        	   195: read_key = $8349
+                        	   196: read_page = $8485
+                        	   197: read_pages = $847A
+                        	   198: receive = $8D7C
+                        	   199: reset = $8000
+                        	   200: rmv_pixel = $8335
+                        	   201: run = $8E7C
+                        	   202: save = $8E2D
+                        	   203: save_dir = $86E6
+                        	   204: save_fat = $86A1
+                        	   205: save_file = $8618
+                        	   206: screen_cout = $82A3
+                        	   207: send_byte = $8469
+                        	   208: set_drive0 = $8E65
+                        	   209: set_drive1 = $8E69
+                        	   210: set_drive2 = $8E6D
+                        	   211: set_drive3 = $8E71
+                        	   212: set_output_dev = $8A6F
+                        	   213: show_dir = $873E
+                        	   214: stor_eeprom_addr_h = $0F
+                        	   215: stor_eeprom_addr_l = $0E
+                        	   216: stor_ram_addr_h = $11
+                        	   217: stor_ram_addr_l = $10
+                        	   218: terminal = $8C35
+                        	   219: terminal_args = $2E
+                        	   220: ticks = $1D
+                        	   221: tmp1 = $05
+                        	   222: tmp2 = $07
+                        	   223: tmp3 = $09
+                        	   224: vdp_color_table_write = $8844
+                        	   225: vdp_init = $87F4
+                        	   226: vdp_pattern_table_write = $8834
+                        	   227: vdp_sprite_pattern_table_write = $8824
+                        	   228: vdp_write_end = $1A
+                        	   229: vdp_write_ptr = $18
+                        	   230: write_page = $84AE
+                        	   231: write_pages = $84A3
+                        	   232: xmodem_receive = $8380
+
+
+Symbols by name:
+CR                               E:000D
+JMP_PRINT_HEX                    E:0309
+JMP_PUTC                         E:0306
+LF                               E:000A
+addr_mode                        E:0036
+addressing_modes                 E:9250
+code_pointer                     E:0037
+find_instruction                 E:8E8D
+main                             A:0608
+print_instruction                E:8EAA
+print_line                       A:0619
+
+Symbols by value:
+000A LF
+000D CR
+0036 addr_mode
+0037 code_pointer
+0306 JMP_PUTC
+0309 JMP_PRINT_HEX
+0608 main
+0619 print_line
+8E8D find_instruction
+8EAA print_instruction
+9250 addressing_modes

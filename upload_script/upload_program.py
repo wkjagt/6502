@@ -4,6 +4,8 @@ import serial
 from itertools import zip_longest
 import time
 
+TTY = "tty.usbserial-A700fbj9"
+
 class Uploader:
     NOP = 0xea                   # no-op instruction byte to fill left over space with
     SOH = 0x01                   # start of header
@@ -32,12 +34,12 @@ class Uploader:
     def open_serial_port(self, serial_device_name):
         return serial.Serial(
             port=serial_device_name,
-            baudrate=19200,
+            baudrate=9600,
             bytesize=serial.EIGHTBITS,
             stopbits=serial.STOPBITS_ONE,
             parity=serial.PARITY_NONE
         )
-    
+
     def upload(self):
         self.write_byte(ord('l'))
 
@@ -60,6 +62,11 @@ class Uploader:
         with open(self.path, "rb") as f:
             return list(bytearray(f.read()))
 
-uploader = Uploader("/dev/tty.usbserial-A700fbj9", os.environ["ROM"])
-uploader.upload()
+    def send_raw(self):
+        for byte in self.program_bytes():
+            time.sleep(0.2)
+            self.write_byte(byte)
+
+uploader = Uploader(TTY, os.environ["ROM"])
+uploader.send_raw()
 

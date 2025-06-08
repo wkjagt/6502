@@ -15,6 +15,7 @@ SER_CMD         =       $4802           ; Command register
 NAK             =       $15
 ACK             =       $06
 EOT             =       $04
+SOH             =       $01
 
 CLEAR_SCREEN    =       $0c
 CHOOSE_CURSOR   =       2               ; choose cursor command to screen
@@ -34,26 +35,31 @@ KB_ACK          =       %01000000
 
 RD_SRL_B        =       $838D
 
-tmp3            =       $04             ; two bytes
+tmp1            =       $04             ; two bytes / 16 bits
+tmp2            =       $06             ; two bytes / 16 bits
+tmp3            =       $08             ; two bytes / 16 bits
 
                 .ORG    $0700
 
 
 screen_init:
-                ; data direction
+                ; Set up data pins to communicate with the screen controller
                 lda     IO_DDRA
                 ora     #SCRN_OUT_PINS
                 and     #(SCRN_OUT_PINS | SCRN_UNUSED)
                 sta     IO_DDRA
 
-                ; start with all pins low (not sure this is needed)
+                ; start with all pins low. Not needed (maybe) but
+                ; it's nice to start with clean outputs
                 lda     IO_PORTA
                 and     #SCRN_UNUSED
                 sta     IO_PORTA
 
+                ; initialization sequence for screen controller
                 lda     #str_screen_init
                 jsr     print_string
 
+                ; startup message
                 lda     #str_startup
                 jsr     print_string
 
@@ -66,46 +72,70 @@ kb_init:
                 jsr     print_string
 
 wait_for_key_press:
-                
+                ; The sender starts transmitting bytes as soon as
+                ; it receives a NAK byte from the receiver. To be
+                ; able to synchronize the two, the workflow is:
+                ; 1. start sending command on sender
+                ; 2. Press any key on the receiver to start the
+                ;    transmission
                 lda     IO_PORTB
                 bpl     wait_for_key_press
 
-                jsr     receive_nibble  ; take the key from the buffer
+                ; take the key from the buffer and ignore it
+                jsr     receive_nibble
                 jsr     receive_nibble
                 jsr     receive_nibble
 
-xmodem_receive
-                lda     #NAK            ; tell the sender to start sending
+xmodem_receive:
+                ; tell the sender to start sending
+                lda     #NAK
                 sta     SER_DATA
 
+; Receiving bytes are done in two nested loops:
+; .next_packet receives xmodem packets of 131 bytes long,
+; including the 128 data bytes, and loops until an EOT byte
+; is received right after a 
+; .next_data_byte receives each of the 128 data bytes
 .next_packet:
                 jsr     receive_byte    ; receive SOH or EOT
                 cmp     #EOT
-                beq     eot
+                beq     .eot
 
+                cmp     #SOH
+                beq     .continue_header
+
+                ; todo: error if ending up here?
+.continue_header:
                 jsr     receive_byte    ; packet sequence number
                 jsr     receive_byte    ; packet sequence number checksum
+                ; todo: add up and check if 0
 
                 ldy     #128            ; 128 data bytes
-.next_byte:
+.next_data_byte:
                 jsr     receive_byte
                 jsr     print_formatted_byte_as_hex
 
                 dey
-                bne     .next_byte
+                bne     .next_data_byte 
 
                 jsr     receive_byte    ; receive the data packet checksum
+
+                ; todo: verify checksum and send ACK or NAK
 
                 lda     #ACK
                 sta     SER_DATA
 
                 jmp     .next_packet
-eot:
+.eot:
                 lda     #ACK
                 sta     SER_DATA
                 rts
 
 receive_byte:
+                ; reading a byte through serial connection
+                ; is wrapped in turning DTR on and off. However
+                ; it seems to not completely work, since we still
+                ; need a short pause between the bytes when sending.
                 lda     #%11001011      ; terminal ready
                 sta     SER_CMD
 
@@ -118,6 +148,7 @@ receive_byte:
                 pla
                 rts
 
+; this only adds a space
 print_formatted_byte_as_hex:
                 jsr     print_byte_as_hex
                 lda     #" "
@@ -135,7 +166,7 @@ print_byte_as_hex:
                 jsr     print_nibble
 
                 pla                     ; get original value back
-                and     #$0F            ; reset high nibble
+                and     #%00001111      ; reset high nibble
                 jsr     print_nibble
                 rts
 
@@ -170,8 +201,6 @@ keyboard_loop:
 
 receive_nibble:
                 lda     IO_PORTB        ; LDA loads bit 7 (avail) into N
-                ; bpl     receive_nibble  ; repeat until avail is 1
-
                 ; move low nibble from PORT B to high nibble
                 asl
                 asl
@@ -203,7 +232,7 @@ send_byte_to_screen:
                 pha                     ; nibble and once for low nibble
 
                 lda     IO_PORTA
-                and     #!SCRN_DATA_PINS     ; clear data
+                and     #!SCRN_DATA_PINS; clear data
                 sta     IO_PORTA
 
                 jsr     wait_ack_low
@@ -212,7 +241,7 @@ send_byte_to_screen:
                 ora     IO_PORTA
                 sta     IO_PORTA
 
-                ora     #SCRN_AVAILABLE      ; flip available = high
+                ora     #SCRN_AVAILABLE ; flip available = high
                 sta     IO_PORTA
 
                 jsr     wait_ack_high
@@ -278,9 +307,6 @@ print_string:
                 lda     #$0a
                 jsr     send_byte_to_screen
                 rts
-
-startup_text:                                    ; CR   LF  Null
-    .asciiz "Shallow Thought v0.01 / 14-10-2021", 0
 
 ; strings ========================================
 

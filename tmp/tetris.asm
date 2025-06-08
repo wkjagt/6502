@@ -19,6 +19,7 @@ last_ticks      =       $54             ; ticks at last continue
 flags           =       $56             ; bit 0: exit, bit 1: drop
 level           =       $57
 cleared_rows    =       $58
+mess            =       $59
 
 ; keys
 ESC             =       27
@@ -51,10 +52,10 @@ init_game:      jsr     JMP_INIT_SCREEN ; clears the screen
                 stz     level
                 stz     cleared_rows
 
-                ldx     #24
+                ldx     #19
                 jsr     set_info_cursor
                 jsr     JMP_PRINT_STRING
-                .byte   "SCORE: 0000 LEVEL: 000 ROWS: 000",0
+                .byte   "SCORE: 0000 LEVEL: 000 ROWS: 000 Mess: 000",0
 
                 jsr     clear_grid
                 jsr     spawn
@@ -251,6 +252,7 @@ move_down:      inc     piece_y
                 dec     piece_y         ; undo the inc
                 jsr     lock_piece      ; write the coordinates to the proper cells
                 jsr     collapse_rows
+                jsr     calc_mess
                 jsr     spawn
                 rts
 .move:          dec     piece_y
@@ -626,7 +628,7 @@ inc_clr_rows:   sed
                 lda     cleared_rows
                 adc     #1
                 sta     cleared_rows
-                ldx     #54
+                ldx     #49
                 jsr     set_info_cursor
                 lda     cleared_rows
                 jsr     JMP_PRINT_HEX
@@ -645,7 +647,7 @@ inc_level:      lda     cleared_rows    ; NOTE: this is in BCD
                 lsr
                 sta     level
 
-                ldx     #44
+                ldx     #39
                 jsr     set_info_cursor
                 lda     level
                 jsr     JMP_PRINT_HEX
@@ -670,7 +672,7 @@ inc_score:      phy
                 bne     .loop
 
                 ; print score
-                ldx     #31
+                ldx     #26
                 jsr     set_info_cursor
                 lda     score+1
                 jsr     JMP_PRINT_HEX
@@ -678,6 +680,40 @@ inc_score:      phy
                 jsr     JMP_PRINT_HEX
                 cld
                 ply
+                rts
+;============================================================
+; calculate the "messiness" of the grid
+;============================================================
+calc_mess:      stz     mess
+                lda     #9
+                sta     cell_x
+.find:          lda     #22
+                sta     cell_y
+                ; find the first empty cell (potential hole) starting from the bottom
+.next_cell:     jsr     cell_filled     ; carry set when filled
+                bcc     .count          ; start counting the filled cells above
+                dec     cell_y
+                bne     .next_cell
+                bra     .next_col
+
+.count:         jsr     cell_filled
+                bcc     .skip
+                sed
+                lda     mess
+                clc
+                adc     #1
+                sta     mess
+                cld
+.skip:          dec     cell_y
+                bne     .count
+
+.next_col:      dec     cell_x
+                bpl     .find
+
+.done:          ldx     #59
+                jsr     set_info_cursor
+                lda     mess
+                jsr     JMP_PRINT_HEX
                 rts
 
 ;============================================================

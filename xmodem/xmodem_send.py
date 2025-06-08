@@ -11,16 +11,19 @@ ser = serial.Serial(
             parity=serial.PARITY_NONE
         )
 def getc(size, timeout=1):
-    return ser.read(size) or None
+    received = ser.read(size)
+    print(received)
+    return received or None
 
 def putc(data, timeout=1):
     for byte in data:
         while not ser.getCTS():
             pass
-        time.sleep(0.005)
+        time.sleep(0.0005)
         ser.write(bytes([byte]))
     print("Sent packet")
 
 modem = XMODEM(getc, putc)
-stream = open('tmp/sequence.rom', 'rb')
+stream = open('/Users/willemvanderjagt/code/github.com/wkjagt/6502/tmp/out.bin', 'rb')
+print("Waiting for NAK")
 modem.send(stream)
